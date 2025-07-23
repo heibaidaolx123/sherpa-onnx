@@ -151,4 +151,13 @@ SpeakerEmbeddingExtractorImpl::Create(
     NativeResourceManager *mgr, const SpeakerEmbeddingExtractorConfig &config);
 #endif
 
+std::vector<std::vector<float>> SpeakerEmbeddingExtractorImpl::ComputeMultiple(
+    std::vector<OnlineStream *> ss) const {
+  std::vector<std::vector<float>> results;
+  for (auto *s : ss) {
+    results.push_back(Compute(s));
+  }
+  return results;
+}
+
 }  // namespace sherpa_onnx

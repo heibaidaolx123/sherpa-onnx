@@ -31,6 +31,9 @@ class SpeakerEmbeddingExtractorImpl {
   virtual bool IsReady(OnlineStream *s) const = 0;
 
   virtual std::vector<float> Compute(OnlineStream *s) const = 0;
+
+  virtual std::vector<std::vector<float>> ComputeMultiple(
+      std::vector<OnlineStream *> ss) const;
 };
 
 }  // namespace sherpa_onnx

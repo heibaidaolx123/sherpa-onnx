@@ -121,6 +121,115 @@ class SpeakerEmbeddingExtractorNeMoImpl : public SpeakerEmbeddingExtractorImpl {
     return ans;
   }
 
+  std::vector<std::vector<float>> ComputeMultiple(
+      std::vector<OnlineStream *> ss) const override {
+    if (ss.empty()) {
+      SHERPA_ONNX_LOGE("No streams provided for processing");
+      return {};
+    }
+    int feat_dim = ss[0]->FeatureDim();
+    bool apply_cmvn = false;
+    const auto &meta_data = model_.GetMetaData();
+    if (!meta_data.feature_normalize_type.empty()) {
+      if (meta_data.feature_normalize_type == "per_feature") {
+        apply_cmvn = true;
+      }
+    }
+    std::vector<std::vector<float>> results;
+    results.resize(ss.size());
+
+    std::vector<OnlineStream *> filtered_ss;
+    std::vector<int> filtered_ss_index;
+    int max_num_frames = 0;
+    std::vector<int64_t> num_frames_per_stream;
+
+    for (size_t i = 0; i < ss.size(); ++i) {
+      OnlineStream *s = ss[i];
+      int num_frames = s->NumFramesReady() - s->GetNumProcessedFrames();
+      if (num_frames <= 0) {
+        results[i] = {};
+        continue;
+      }
+      if (num_frames > max_num_frames) {
+        max_num_frames = num_frames;
+      }
+      filtered_ss.push_back(ss[i]);
+      filtered_ss_index.push_back(i);
+      num_frames_per_stream.push_back(num_frames);
+    }
+
+    if (filtered_ss.empty()) {
+      return results;
+    }
+
+    if (max_num_frames % 16 != 0) {
+      int32_t pad = 16 - max_num_frames % 16;
+      max_num_frames += pad;
+    }
+
+    int batch_size = filtered_ss.size();
+    std::vector<float> buffer(batch_size * max_num_frames * feat_dim, 0.0f);
+
+    auto memory_info =
+        Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+
+    for (int i = 0; i < batch_size; ++i) {
+      OnlineStream *s = filtered_ss[i];
+      int num_frames = num_frames_per_stream[i];
+      std::vector<float> features =
+          s->GetFrames(s->GetNumProcessedFrames(), num_frames);
+
+      s->GetNumProcessedFrames() += num_frames;
+
+      int32_t feat_dim_tmp = features.size() / num_frames;
+      if (feat_dim_tmp != feat_dim) {
+#if __OHOS__
+        SHERPA_ONNX_LOGE(
+            "Feature dimension mismatch: expected %d, got %d for stream %d",
+            feat_dim, feat_dim_tmp, filtered_ss_index[i]);
+#else
+        SHERPA_ONNX_LOGE(
+            "Feature dimension mismatch: expected %d, got %d for stream %d",
+            feat_dim, feat_dim_tmp, filtered_ss_index[i]);
+#endif
+        exit(-1);
+      }
+      if (apply_cmvn) {
+        NormalizePerFeature(features.data(), num_frames, feat_dim_tmp);
+      }
+
+      std::copy(features.begin(), features.end(),
+                buffer.data() + i * max_num_frames * feat_dim);
+    }
+
+    std::array<int64_t, 3> x_shape{batch_size, max_num_frames, feat_dim};
+    Ort::Value x =
+        Ort::Value::CreateTensor(memory_info, buffer.data(), buffer.size(),
+                                 x_shape.data(), x_shape.size());
+
+    x = Transpose12(model_.Allocator(), &x);
+
+    std::array<int64_t, 1> x_lens_shape{batch_size};
+    Ort::Value x_lens_tensor = Ort::Value::CreateTensor(
+        memory_info, num_frames_per_stream.data(), num_frames_per_stream.size(),
+        x_lens_shape.data(), x_lens_shape.size());
+
+    Ort::Value embedding =
+        model_.Compute(std::move(x), std::move(x_lens_tensor));
+    std::vector<int64_t> embedding_shape =
+        embedding.GetTensorTypeAndShapeInfo().GetShape();
+
+    for (int i = 0; i < batch_size; ++i) {
+      std::vector<float> &results_i = results[filtered_ss_index[i]];
+      results_i.resize(embedding_shape[1]);
+      std::copy(embedding.GetTensorData<float>() + i * embedding_shape[1],
+                embedding.GetTensorData<float>() + (i + 1) * embedding_shape[1],
+                results_i.begin());
+    }
+
+    return results;
+  }
+
  private:
   void NormalizePerFeature(float *p, int32_t num_frames,
                            int32_t feat_dim) const {

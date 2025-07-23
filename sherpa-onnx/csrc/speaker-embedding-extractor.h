@@ -62,6 +62,9 @@ class SpeakerEmbeddingExtractor {
   // You have to ensure IsReady(s) returns true before you call this method.
   std::vector<float> Compute(OnlineStream *s) const;
 
+  std::vector<std::vector<float>> ComputeMultiple(
+      std::vector<OnlineStream *> ss) const;
+
  private:
   std::unique_ptr<SpeakerEmbeddingExtractorImpl> impl_;
 };

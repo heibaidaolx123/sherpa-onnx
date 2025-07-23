@@ -29,6 +29,12 @@ struct OfflineSpeakerDiarizationConfig {
   // We do this recursively.
   float min_duration_off = 0.5;  // in seconds
 
+  float max_duration_per_seg = 30.0;  // in seconds
+
+  int max_batch_size_segmentation = 1;
+
+  int max_batch_size_embedding = 1;
+
   OfflineSpeakerDiarizationConfig() = default;
 
   OfflineSpeakerDiarizationConfig(

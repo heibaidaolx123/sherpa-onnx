@@ -38,6 +38,23 @@ void OfflineSpeakerDiarizationConfig::Register(ParseOptions *po) {
                "if the gap between to segments of the same speaker is less "
                "than this value, then these two segments are merged into a "
                "single segment. We do it recursively.");
+
+  po->Register(
+      "max-duration-per-seg", &max_duration_per_seg,
+      "Maximum duration of a segment. If a segment is longer than this "
+      "value, it is split into multiple segments of this maximum "
+      "duration.");
+
+  po->Register(
+      "max-batch-size-segmentation", &max_batch_size_segmentation,
+      "Maximum batch size for segmentation model. "
+      "If it is 1, then we process one audio chunk at a time. "
+      "If it is > 1, then we process multiple audio chunks in a batch.");
+  po->Register(
+      "max-batch-size-embedding", &max_batch_size_embedding,
+      "Maximum batch size for embedding model. "
+      "If it is 1, then we process one audio chunk at a time. "
+      "If it is > 1, then we process multiple audio chunks in a batch.");
 }
 
 bool OfflineSpeakerDiarizationConfig::Validate() const {
@@ -63,6 +80,24 @@ bool OfflineSpeakerDiarizationConfig::Validate() const {
     return false;
   }
 
+  if (max_duration_per_seg <= 0) {
+    SHERPA_ONNX_LOGE("max_duration_per_seg %.3f is not positive",
+                     max_duration_per_seg);
+    return false;
+  }
+
+  if (max_batch_size_segmentation <= 0) {
+    SHERPA_ONNX_LOGE("max_batch_size_segmentation %d is not positive",
+                     max_batch_size_segmentation);
+    return false;
+  }
+
+  if (max_batch_size_embedding <= 0) {
+    SHERPA_ONNX_LOGE("max_batch_size_embedding %d is not positive",
+                     max_batch_size_embedding);
+    return false;
+  }
+
   return true;
 }
 
@@ -74,7 +109,10 @@ std::string OfflineSpeakerDiarizationConfig::ToString() const {
   os << "embedding=" << embedding.ToString() << ", ";
   os << "clustering=" << clustering.ToString() << ", ";
   os << "min_duration_on=" << min_duration_on << ", ";
-  os << "min_duration_off=" << min_duration_off << ")";
+  os << "min_duration_off=" << min_duration_off << ", ";
+  os << "max_duration_per_seg=" << max_duration_per_seg << ", ";
+  os << "max_batch_size_segmentation=" << max_batch_size_segmentation << ", ";
+  os << "max_batch_size_embedding=" << max_batch_size_embedding << ")";
 
   return os.str();
 }

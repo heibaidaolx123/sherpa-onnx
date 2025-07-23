@@ -66,9 +66,106 @@ class OfflineRecognizerWhisperImpl : public OfflineRecognizerImpl {
   }
 
   void DecodeStreams(OfflineStream **ss, int32_t n) const override {
-    // batch decoding is not implemented yet
-    for (int32_t i = 0; i != n; ++i) {
-      DecodeStream(ss[i]);
+    // // batch decoding is not implemented yet
+    // for (int32_t i = 0; i != n; ++i) {
+    //   DecodeStream(ss[i]);
+    // }
+    if (n == 1) {
+      DecodeStream(ss[0]);
+      return;
+    }
+    decoder_->SetConfig(config_.model_config.whisper);
+
+    int32_t max_num_frames = 3000;
+    auto memory_info =
+        Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+
+    int32_t feat_dim = ss[0]->FeatureDim();
+
+    std::array<int64_t, 3> shape{n, max_num_frames, feat_dim};
+    Ort::Value mel = Ort::Value::CreateTensor<float>(
+        model_->Allocator(), shape.data(), shape.size());
+    float *p_mel = mel.GetTensorMutableData<float>();
+
+    std::vector<int32_t> num_frames_vec(n);
+    for (int32_t i = 0; i < n; ++i) {
+      OfflineStream *s = ss[i];
+      std::vector<float> f = s->GetFrames();
+      int32_t num_frames = f.size() / feat_dim;
+      num_frames_vec[i] = num_frames;
+      model_->NormalizeFeatures(f.data(), num_frames, feat_dim);
+      std::copy(f.data(), f.data() + num_frames * feat_dim,
+                p_mel + i * max_num_frames * feat_dim);
+      std::fill_n(p_mel + (max_num_frames * i + num_frames) * feat_dim,
+                  (max_num_frames - num_frames) * feat_dim, 0);
+    }
+    mel = Transpose12(model_->Allocator(), &mel);
+
+    try {
+      auto cross_kv_batched = model_->ForwardEncoder(std::move(mel));
+      auto kshape =
+          cross_kv_batched.first.GetTensorTypeAndShapeInfo().GetShape();
+      int32_t n_text_layer = kshape[0];
+      int32_t n_bacth = kshape[1];
+      if (n_bacth != n) {
+        SHERPA_ONNX_LOGE(
+            "Expected batch size %d, but got %d. Please check your input.", n,
+            n_bacth);
+        return;
+      }
+      int32_t n_audio_ctx = kshape[2];
+      int32_t n_text_state = kshape[3];
+
+      float *p_k_batched = cross_kv_batched.first.GetTensorMutableData<float>();
+      float *p_v_batched =
+          cross_kv_batched.second.GetTensorMutableData<float>();
+
+      std::array<int64_t, 4> shape{n_text_layer, 1, n_audio_ctx, n_text_state};
+      std::vector<float> k_buf(n_text_layer * n_audio_ctx * n_text_state);
+      std::vector<float> v_buf(n_text_layer * n_audio_ctx * n_text_state);
+
+      for (int32_t i = 0; i < n; ++i) {
+        // for (int32_t i = n - 1; i >= 0; --i) {
+        auto s = ss[i];
+        auto num_frames = num_frames_vec[i];
+
+        Ort::Value n_layer_cross_k = Ort::Value::CreateTensor<float>(
+            memory_info, k_buf.data(), k_buf.size(), shape.data(),
+            shape.size());
+        Ort::Value n_layer_cross_v = Ort::Value::CreateTensor<float>(
+            memory_info, v_buf.data(), v_buf.size(), shape.data(),
+            shape.size());
+        // Ort::Value n_layer_cross_k = Ort::Value::CreateTensor<float>(
+        //     model_->Allocator(), shape.data(), shape.size());
+        // Ort::Value n_layer_cross_v = Ort::Value::CreateTensor<float>(
+        //     model_->Allocator(), shape.data(), shape.size());
+
+        for (int32_t l = 0; l < n_text_layer; ++l) {
+          float *p_k_l_src =
+              p_k_batched + (l * n + i) * n_audio_ctx * n_text_state;
+          float *p_v_l_src =
+              p_v_batched + (l * n + i) * n_audio_ctx * n_text_state;
+          float *p_k_l_dst = k_buf.data() + l * n_audio_ctx * n_text_state;
+          float *p_v_l_dst = v_buf.data() + l * n_audio_ctx * n_text_state;
+          // float *p_k_l_dst = n_layer_cross_k.GetTensorMutableData<float>() +
+          //                    l * n_audio_ctx * n_text_state;
+          // float *p_v_l_dst = n_layer_cross_v.GetTensorMutableData<float>() +
+          //                    l * n_audio_ctx * n_text_state;
+
+          std::copy(p_k_l_src, p_k_l_src + n_audio_ctx * n_text_state,
+                    p_k_l_dst);
+          std::copy(p_v_l_src, p_v_l_src + n_audio_ctx * n_text_state,
+                    p_v_l_dst);
+        }
+        auto results = decoder_->Decode(std::move(n_layer_cross_k),
+                                        std::move(n_layer_cross_v), num_frames);
+
+        auto r = Convert(results[0], symbol_table_);
+        s->SetResult(r);
+      }
+    } catch (const Ort::Exception &ex) {
+      SHERPA_ONNX_LOGE("\n\nCaught exception:\n\n%s", ex.what());
+      return;
     }
   }
 

@@ -98,15 +98,15 @@ class OfflineSpeakerDiarizationPyannoteImpl
       const float *audio, int32_t n,
       OfflineSpeakerDiarizationProgressCallback callback = nullptr,
       void *callback_arg = nullptr) const override {
-    auto now = std::chrono::system_clock::now();
-    std::time_t t = std::chrono::system_clock::to_time_t(now);
-    std::cout << "Current time: "
-              << std::put_time(std::localtime(&t), "%Y-%m-%d %H:%M:%S") << '\n';
+    auto begin = std::chrono::steady_clock::now();
     std::vector<Matrix2D> segmentations = RunSpeakerSegmentationModel(audio, n);
-    now = std::chrono::system_clock::now();
-    t = std::chrono::system_clock::to_time_t(now);
-    std::cout << "Segmentation finished at: "
-              << std::put_time(std::localtime(&t), "%Y-%m-%d %H:%M:%S") << '\n';
+    auto end = std::chrono::steady_clock::now();
+    float elapsed_seconds =
+        std::chrono::duration_cast<std::chrono::milliseconds>(end - begin)
+            .count() /
+        1000.0f;
+    std::cout << "Segmentation finished in: " << elapsed_seconds
+              << " seconds\n";
     // segmentations[i] is for chunk_i
     // Each matrix is of shape (num_frames, num_powerset_classes)
     if (segmentations.empty()) {
@@ -148,6 +148,7 @@ class OfflineSpeakerDiarizationPyannoteImpl
     std::vector<int32_t> valid_indexes;
     valid_indexes.reserve(chunk_speaker_samples_list_pair.second.size());
 
+    begin = std::chrono::steady_clock::now();
     Matrix2D embeddings;
     if (config_.max_batch_size_embedding == 1) {
       embeddings =
@@ -158,11 +159,13 @@ class OfflineSpeakerDiarizationPyannoteImpl
           audio, n, chunk_speaker_samples_list_pair.second, &valid_indexes,
           std::move(callback), callback_arg);
     }
+    end = std::chrono::steady_clock::now();
+    elapsed_seconds =
+        std::chrono::duration_cast<std::chrono::milliseconds>(end - begin)
+            .count() /
+        1000.0f;
+    std::cout << "Embedding finished in: " << elapsed_seconds << " seconds\n";
 
-    now = std::chrono::system_clock::now();
-    t = std::chrono::system_clock::to_time_t(now);
-    std::cout << "Embedding finished at: "
-              << std::put_time(std::localtime(&t), "%Y-%m-%d %H:%M:%S") << '\n';
     if (valid_indexes.size() != chunk_speaker_samples_list_pair.second.size()) {
       std::vector<Int32Pair> chunk_speaker_pair;
       std::vector<std::vector<Int32Pair>> sample_indexes;
@@ -178,9 +181,15 @@ class OfflineSpeakerDiarizationPyannoteImpl
       chunk_speaker_samples_list_pair.first = std::move(chunk_speaker_pair);
       chunk_speaker_samples_list_pair.second = std::move(sample_indexes);
     }
-
+    begin = std::chrono::steady_clock::now();
     std::vector<int32_t> cluster_labels = clustering_->Cluster(
         &embeddings(0, 0), embeddings.rows(), embeddings.cols());
+    end = std::chrono::steady_clock::now();
+    elapsed_seconds =
+        std::chrono::duration_cast<std::chrono::milliseconds>(end - begin)
+            .count() /
+        1000.0f;
+    std::cout << "Clustering finished in: " << elapsed_seconds << " seconds\n";
 
     if (cluster_labels.empty()) {
       SHERPA_ONNX_LOGE("No speakers found in the audio samples");

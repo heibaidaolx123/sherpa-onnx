@@ -4,6 +4,7 @@
 
 #include "sherpa-onnx/csrc/speaker-embedding-extractor-nemo-model.h"
 
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -33,8 +34,9 @@ class SpeakerEmbeddingExtractorNeMoModel::Impl {
         sess_opts_(GetSessionOptions(config)),
         allocator_{} {
     {
-      auto buf = ReadFile(config.model);
-      Init(buf.data(), buf.size());
+      // auto buf = ReadFile(config.model);
+      // Init(buf.data(), buf.size());
+      Init(config.model);
     }
   }
 
@@ -72,6 +74,53 @@ class SpeakerEmbeddingExtractorNeMoModel::Impl {
   void Init(void *model_data, size_t model_data_length) {
     sess_ = std::make_unique<Ort::Session>(env_, model_data, model_data_length,
                                            sess_opts_);
+
+    GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
+
+    GetOutputNames(sess_.get(), &output_names_, &output_names_ptr_);
+
+    // get meta data
+    Ort::ModelMetadata meta_data = sess_->GetModelMetadata();
+    if (config_.debug) {
+      std::ostringstream os;
+      PrintModelMetadata(os, meta_data);
+#if __OHOS__
+      SHERPA_ONNX_LOGE("%{public}s", os.str().c_str());
+#else
+      SHERPA_ONNX_LOGE("%s", os.str().c_str());
+#endif
+    }
+
+    Ort::AllocatorWithDefaultOptions allocator;  // used in the macro below
+    SHERPA_ONNX_READ_META_DATA(meta_data_.output_dim, "output_dim");
+    SHERPA_ONNX_READ_META_DATA(meta_data_.feat_dim, "feat_dim");
+    SHERPA_ONNX_READ_META_DATA(meta_data_.sample_rate, "sample_rate");
+    SHERPA_ONNX_READ_META_DATA(meta_data_.window_size_ms, "window_size_ms");
+    SHERPA_ONNX_READ_META_DATA(meta_data_.window_stride_ms, "window_stride_ms");
+    SHERPA_ONNX_READ_META_DATA_STR(meta_data_.language, "language");
+
+    SHERPA_ONNX_READ_META_DATA_STR_WITH_DEFAULT(
+        meta_data_.feature_normalize_type, "feature_normalize_type", "");
+
+    SHERPA_ONNX_READ_META_DATA_STR_WITH_DEFAULT(meta_data_.window_type,
+                                                "window_type", "povey");
+
+    std::string framework;
+    SHERPA_ONNX_READ_META_DATA_STR(framework, "framework");
+    if (framework != "nemo") {
+#if __OHOS__
+      SHERPA_ONNX_LOGE("Expect a NeMo model, given: %{public}s",
+                       framework.c_str());
+#else
+      SHERPA_ONNX_LOGE("Expect a NeMo model, given: %s", framework.c_str());
+#endif
+      exit(-1);
+    }
+  }
+
+  void Init(const std::string &model) {
+    sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model).c_str(), sess_opts_);
 
     GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
 

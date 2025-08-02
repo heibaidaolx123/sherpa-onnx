@@ -4,6 +4,7 @@
 
 #include "sherpa-onnx/csrc/offline-speaker-segmentation-pyannote-model.h"
 
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,8 +31,9 @@ class OfflineSpeakerSegmentationPyannoteModel::Impl {
         env_(ORT_LOGGING_LEVEL_ERROR),
         sess_opts_(GetSessionOptions(config)),
         allocator_{} {
-    auto buf = ReadFile(config_.pyannote.model);
-    Init(buf.data(), buf.size());
+    // auto buf = ReadFile(config_.pyannote.model);
+    // Init(buf.data(), buf.size());
+    Init(config_.pyannote.model);
   }
 
   template <typename Manager>
@@ -60,6 +62,43 @@ class OfflineSpeakerSegmentationPyannoteModel::Impl {
   void Init(void *model_data, size_t model_data_length) {
     sess_ = std::make_unique<Ort::Session>(env_, model_data, model_data_length,
                                            sess_opts_);
+
+    GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
+
+    GetOutputNames(sess_.get(), &output_names_, &output_names_ptr_);
+
+    // get meta data
+    Ort::ModelMetadata meta_data = sess_->GetModelMetadata();
+    if (config_.debug) {
+      std::ostringstream os;
+      PrintModelMetadata(os, meta_data);
+#if __OHOS__
+      SHERPA_ONNX_LOGE("%{public}s\n", os.str().c_str());
+#else
+      SHERPA_ONNX_LOGE("%s\n", os.str().c_str());
+#endif
+    }
+
+    Ort::AllocatorWithDefaultOptions allocator;  // used in the macro below
+    SHERPA_ONNX_READ_META_DATA(meta_data_.sample_rate, "sample_rate");
+    SHERPA_ONNX_READ_META_DATA(meta_data_.window_size, "window_size");
+
+    meta_data_.window_shift =
+        static_cast<int32_t>(0.1 * meta_data_.window_size);
+
+    SHERPA_ONNX_READ_META_DATA(meta_data_.receptive_field_size,
+                               "receptive_field_size");
+    SHERPA_ONNX_READ_META_DATA(meta_data_.receptive_field_shift,
+                               "receptive_field_shift");
+    SHERPA_ONNX_READ_META_DATA(meta_data_.num_speakers, "num_speakers");
+    SHERPA_ONNX_READ_META_DATA(meta_data_.powerset_max_classes,
+                               "powerset_max_classes");
+    SHERPA_ONNX_READ_META_DATA(meta_data_.num_classes, "num_classes");
+  }
+
+  void Init(const std::string &model_path) {
+    sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model_path).c_str(), sess_opts_);
 
     GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
 

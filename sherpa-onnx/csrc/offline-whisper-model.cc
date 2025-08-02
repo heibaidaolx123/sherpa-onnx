@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -36,13 +37,15 @@ class OfflineWhisperModel::Impl {
         sess_opts_(GetSessionOptions(config)),
         allocator_{} {
     {
-      auto buf = ReadFile(config.whisper.encoder);
-      InitEncoder(buf.data(), buf.size());
+      // auto buf = ReadFile(config.whisper.encoder);
+      // InitEncoder(buf.data(), buf.size());
+      InitEncoder(config.whisper.encoder);
     }
 
     {
-      auto buf = ReadFile(config.whisper.decoder);
-      InitDecoder(buf.data(), buf.size());
+      // auto buf = ReadFile(config.whisper.decoder);
+      // InitDecoder(buf.data(), buf.size());
+      InitDecoder(config.whisper.decoder);
     }
   }
 
@@ -290,9 +293,79 @@ class OfflineWhisperModel::Impl {
     }
   }
 
+  void InitEncoder(const std::string &model_path) {
+    encoder_sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model_path).c_str(), sess_opts_);
+
+    GetInputNames(encoder_sess_.get(), &encoder_input_names_,
+                  &encoder_input_names_ptr_);
+
+    GetOutputNames(encoder_sess_.get(), &encoder_output_names_,
+                   &encoder_output_names_ptr_);
+
+    // get meta data
+    Ort::ModelMetadata meta_data = encoder_sess_->GetModelMetadata();
+    if (config_.debug) {
+      std::ostringstream os;
+      os << "---encoder---\n";
+      PrintModelMetadata(os, meta_data);
+#if __OHOS__
+      SHERPA_ONNX_LOGE("%{public}s\n", os.str().c_str());
+#else
+      SHERPA_ONNX_LOGE("%s\n", os.str().c_str());
+#endif
+    }
+
+    Ort::AllocatorWithDefaultOptions allocator;  // used in the macro below
+    SHERPA_ONNX_READ_META_DATA(n_mels_, "n_mels");
+    SHERPA_ONNX_READ_META_DATA(n_text_layer_, "n_text_layer");
+    SHERPA_ONNX_READ_META_DATA(n_text_ctx_, "n_text_ctx");
+    SHERPA_ONNX_READ_META_DATA(n_text_state_, "n_text_state");
+    SHERPA_ONNX_READ_META_DATA(n_vocab_, "n_vocab");
+    SHERPA_ONNX_READ_META_DATA(sot_, "sot");
+    SHERPA_ONNX_READ_META_DATA(eot_, "eot");
+    SHERPA_ONNX_READ_META_DATA(blank_, "blank_id");
+    SHERPA_ONNX_READ_META_DATA(translate_, "translate");
+    SHERPA_ONNX_READ_META_DATA(transcribe_, "transcribe");
+    SHERPA_ONNX_READ_META_DATA(is_multilingual_, "is_multilingual");
+    SHERPA_ONNX_READ_META_DATA(no_timestamps_, "no_timestamps");
+    SHERPA_ONNX_READ_META_DATA(no_speech_, "no_speech");
+    SHERPA_ONNX_READ_META_DATA_VEC(sot_sequence_, "sot_sequence");
+
+    if (is_multilingual_) {
+      SHERPA_ONNX_READ_META_DATA_VEC(all_language_tokens_,
+                                     "all_language_tokens");
+      SHERPA_ONNX_READ_META_DATA_VEC_STRING(all_language_codes_,
+                                            "all_language_codes");
+      if (all_language_tokens_.size() != all_language_codes_.size()) {
+        SHERPA_ONNX_LOGE("# lang_id: %d != # lang_code: %d",
+                         static_cast<int32_t>(all_language_tokens_.size()),
+                         static_cast<int32_t>(all_language_codes_.size()));
+        exit(-1);
+      }
+
+      for (int32_t i = 0;
+           i != static_cast<int32_t>(all_language_tokens_.size()); ++i) {
+        lang2id_[all_language_codes_[i]] = all_language_tokens_[i];
+        id2lang_[all_language_tokens_[i]] = all_language_codes_[i];
+      }
+    }
+  }
+
   void InitDecoder(void *model_data, size_t model_data_length) {
     decoder_sess_ = std::make_unique<Ort::Session>(
         env_, model_data, model_data_length, sess_opts_);
+
+    GetInputNames(decoder_sess_.get(), &decoder_input_names_,
+                  &decoder_input_names_ptr_);
+
+    GetOutputNames(decoder_sess_.get(), &decoder_output_names_,
+                   &decoder_output_names_ptr_);
+  }
+
+  void InitDecoder(const std::string &model_path) {
+    decoder_sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model_path).c_str(), sess_opts_);
 
     GetInputNames(decoder_sess_.get(), &decoder_input_names_,
                   &decoder_input_names_ptr_);
@@ -405,13 +478,13 @@ const std::vector<int32_t> &OfflineWhisperModel::GetAllLanguageIDs() const {
   return impl_->GetAllLanguageIDs();
 }
 
-const std::unordered_map<std::string, int32_t>
-    &OfflineWhisperModel::GetLang2ID() const {
+const std::unordered_map<std::string, int32_t> &
+OfflineWhisperModel::GetLang2ID() const {
   return impl_->GetLang2ID();
 }
 
-const std::unordered_map<int32_t, std::string>
-    &OfflineWhisperModel::GetID2Lang() const {
+const std::unordered_map<int32_t, std::string> &
+OfflineWhisperModel::GetID2Lang() const {
   return impl_->GetID2Lang();
 }
 

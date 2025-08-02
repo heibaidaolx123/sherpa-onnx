@@ -142,3 +142,8 @@ README-DEV.txt
 .idea
 sherpa-onnx-dolphin-base-ctc-multi-lang-int8-2025-04-02
 dict
+.vscode
+build*
+.github
+CMakeLists.txt.back
+test_sd.sh

@@ -5,6 +5,7 @@
 #include "sherpa-onnx/csrc/offline-paraformer-model.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <string>
 #include <utility>
 
@@ -32,8 +33,9 @@ class OfflineParaformerModel::Impl {
         env_(ORT_LOGGING_LEVEL_ERROR),
         sess_opts_(GetSessionOptions(config)),
         allocator_{} {
-    auto buf = ReadFile(config_.paraformer.model);
-    Init(buf.data(), buf.size());
+    // auto buf = ReadFile(config_.paraformer.model);
+    // Init(buf.data(), buf.size());
+    Init(config_.paraformer.model);
   }
 
   template <typename Manager>
@@ -71,6 +73,35 @@ class OfflineParaformerModel::Impl {
   void Init(void *model_data, size_t model_data_length) {
     sess_ = std::make_unique<Ort::Session>(env_, model_data, model_data_length,
                                            sess_opts_);
+
+    GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
+
+    GetOutputNames(sess_.get(), &output_names_, &output_names_ptr_);
+
+    // get meta data
+    Ort::ModelMetadata meta_data = sess_->GetModelMetadata();
+    if (config_.debug) {
+      std::ostringstream os;
+      PrintModelMetadata(os, meta_data);
+#if __OHOS__
+      SHERPA_ONNX_LOGE("%{public}s\n", os.str().c_str());
+#else
+      SHERPA_ONNX_LOGE("%s\n", os.str().c_str());
+#endif
+    }
+
+    Ort::AllocatorWithDefaultOptions allocator;  // used in the macro below
+    SHERPA_ONNX_READ_META_DATA(vocab_size_, "vocab_size");
+    SHERPA_ONNX_READ_META_DATA(lfr_window_size_, "lfr_window_size");
+    SHERPA_ONNX_READ_META_DATA(lfr_window_shift_, "lfr_window_shift");
+
+    SHERPA_ONNX_READ_META_DATA_VEC_FLOAT(neg_mean_, "neg_mean");
+    SHERPA_ONNX_READ_META_DATA_VEC_FLOAT(inv_stddev_, "inv_stddev");
+  }
+
+  void Init(const std::string &model_path) {
+    sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model_path).c_str(), sess_opts_);
 
     GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
 

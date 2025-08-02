@@ -5,6 +5,7 @@
 #include "sherpa-onnx/csrc/offline-sense-voice-model.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <string>
 #include <utility>
 
@@ -32,8 +33,9 @@ class OfflineSenseVoiceModel::Impl {
         env_(ORT_LOGGING_LEVEL_ERROR),
         sess_opts_(GetSessionOptions(config)),
         allocator_{} {
-    auto buf = ReadFile(config_.sense_voice.model);
-    Init(buf.data(), buf.size());
+    // auto buf = ReadFile(config_.sense_voice.model);
+    // Init(buf.data(), buf.size());
+    Init(config_.sense_voice.model);
   }
 
   template <typename Manager>
@@ -71,6 +73,60 @@ class OfflineSenseVoiceModel::Impl {
   void Init(void *model_data, size_t model_data_length) {
     sess_ = std::make_unique<Ort::Session>(env_, model_data, model_data_length,
                                            sess_opts_);
+
+    GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
+
+    GetOutputNames(sess_.get(), &output_names_, &output_names_ptr_);
+
+    // get meta data
+    Ort::ModelMetadata meta_data = sess_->GetModelMetadata();
+    if (config_.debug) {
+      std::ostringstream os;
+      PrintModelMetadata(os, meta_data);
+#if __OHOS__
+      SHERPA_ONNX_LOGE("%{public}s\n", os.str().c_str());
+#else
+      SHERPA_ONNX_LOGE("%s\n", os.str().c_str());
+#endif
+    }
+
+    Ort::AllocatorWithDefaultOptions allocator;  // used in the macro below
+    SHERPA_ONNX_READ_META_DATA(meta_data_.vocab_size, "vocab_size");
+    SHERPA_ONNX_READ_META_DATA(meta_data_.window_size, "lfr_window_size");
+    SHERPA_ONNX_READ_META_DATA(meta_data_.window_shift, "lfr_window_shift");
+    SHERPA_ONNX_READ_META_DATA(meta_data_.normalize_samples,
+                               "normalize_samples");
+
+    SHERPA_ONNX_READ_META_DATA(meta_data_.with_itn_id, "with_itn");
+
+    SHERPA_ONNX_READ_META_DATA(meta_data_.without_itn_id, "without_itn");
+
+    int32_t lang_auto = 0;
+    int32_t lang_zh = 0;
+    int32_t lang_en = 0;
+    int32_t lang_ja = 0;
+    int32_t lang_ko = 0;
+    int32_t lang_yue = 0;
+
+    SHERPA_ONNX_READ_META_DATA(lang_auto, "lang_auto");
+    SHERPA_ONNX_READ_META_DATA(lang_zh, "lang_zh");
+    SHERPA_ONNX_READ_META_DATA(lang_en, "lang_en");
+    SHERPA_ONNX_READ_META_DATA(lang_ja, "lang_ja");
+    SHERPA_ONNX_READ_META_DATA(lang_ko, "lang_ko");
+    SHERPA_ONNX_READ_META_DATA(lang_yue, "lang_yue");
+
+    meta_data_.lang2id = {
+        {"auto", lang_auto}, {"zh", lang_zh}, {"en", lang_en},
+        {"ja", lang_ja},     {"ko", lang_ko}, {"yue", lang_yue},
+    };
+
+    SHERPA_ONNX_READ_META_DATA_VEC_FLOAT(meta_data_.neg_mean, "neg_mean");
+    SHERPA_ONNX_READ_META_DATA_VEC_FLOAT(meta_data_.inv_stddev, "inv_stddev");
+  }
+
+  void Init(const std::string &model_path) {
+    sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model_path).c_str(), sess_opts_);
 
     GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
 

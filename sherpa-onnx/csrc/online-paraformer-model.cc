@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <string>
 
 #if __ANDROID_API__ >= 9
@@ -33,13 +34,15 @@ class OnlineParaformerModel::Impl {
         sess_opts_(GetSessionOptions(config)),
         allocator_{} {
     {
-      auto buf = ReadFile(config.paraformer.encoder);
-      InitEncoder(buf.data(), buf.size());
+      // auto buf = ReadFile(config.paraformer.encoder);
+      // InitEncoder(buf.data(), buf.size());
+      InitEncoder(config.paraformer.encoder);
     }
 
     {
-      auto buf = ReadFile(config.paraformer.decoder);
-      InitDecoder(buf.data(), buf.size());
+      // auto buf = ReadFile(config.paraformer.decoder);
+      // InitDecoder(buf.data(), buf.size());
+      InitDecoder(config.paraformer.decoder);
     }
   }
 
@@ -154,6 +157,56 @@ class OnlineParaformerModel::Impl {
   void InitDecoder(void *model_data, size_t model_data_length) {
     decoder_sess_ = std::make_unique<Ort::Session>(
         env_, model_data, model_data_length, sess_opts_);
+
+    GetInputNames(decoder_sess_.get(), &decoder_input_names_,
+                  &decoder_input_names_ptr_);
+
+    GetOutputNames(decoder_sess_.get(), &decoder_output_names_,
+                   &decoder_output_names_ptr_);
+  }
+
+  void InitEncoder(const std::string &model_path) {
+    encoder_sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model_path).c_str(), sess_opts_);
+
+    GetInputNames(encoder_sess_.get(), &encoder_input_names_,
+                  &encoder_input_names_ptr_);
+
+    GetOutputNames(encoder_sess_.get(), &encoder_output_names_,
+                   &encoder_output_names_ptr_);
+
+    // get meta data
+    Ort::ModelMetadata meta_data = encoder_sess_->GetModelMetadata();
+    if (config_.debug) {
+      std::ostringstream os;
+      PrintModelMetadata(os, meta_data);
+#if __OHOS__
+      SHERPA_ONNX_LOGE("%{public}s", os.str().c_str());
+#else
+      SHERPA_ONNX_LOGE("%s", os.str().c_str());
+#endif
+    }
+
+    Ort::AllocatorWithDefaultOptions allocator;  // used in the macro below
+    SHERPA_ONNX_READ_META_DATA(vocab_size_, "vocab_size");
+    SHERPA_ONNX_READ_META_DATA(lfr_window_size_, "lfr_window_size");
+    SHERPA_ONNX_READ_META_DATA(lfr_window_shift_, "lfr_window_shift");
+    SHERPA_ONNX_READ_META_DATA(encoder_output_size_, "encoder_output_size");
+    SHERPA_ONNX_READ_META_DATA(decoder_num_blocks_, "decoder_num_blocks");
+    SHERPA_ONNX_READ_META_DATA(decoder_kernel_size_, "decoder_kernel_size");
+
+    SHERPA_ONNX_READ_META_DATA_VEC_FLOAT(neg_mean_, "neg_mean");
+    SHERPA_ONNX_READ_META_DATA_VEC_FLOAT(inv_stddev_, "inv_stddev");
+
+    float scale = std::sqrt(encoder_output_size_);
+    for (auto &f : inv_stddev_) {
+      f *= scale;
+    }
+  }
+
+  void InitDecoder(const std::string &model_path) {
+    decoder_sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model_path).c_str(), sess_opts_);
 
     GetInputNames(decoder_sess_.get(), &decoder_input_names_,
                   &decoder_input_names_ptr_);

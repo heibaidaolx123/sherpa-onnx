@@ -16,6 +16,12 @@ void VadModelConfig::Register(ParseOptions *po) {
   silero_vad.Register(po);
   ten_vad.Register(po);
 
+  po->Register("vad-pre-padding", &pre_padding,
+               "Number of samples to add as padding before the speech segment");
+
+  po->Register("vad-post-padding", &post_padding,
+               "Number of samples to add as padding after the speech segment");
+
   po->Register("vad-sample-rate", &sample_rate,
                "Sample rate expected by the VAD model");
 

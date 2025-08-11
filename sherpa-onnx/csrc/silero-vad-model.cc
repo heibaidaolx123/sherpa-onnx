@@ -4,6 +4,7 @@
 
 #include "sherpa-onnx/csrc/silero-vad-model.h"
 
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,8 +33,9 @@ class SileroVadModel::Impl {
         sess_opts_(GetSessionOptions(config)),
         allocator_{},
         sample_rate_(config.sample_rate) {
-    auto buf = ReadFile(config.silero_vad.model);
-    Init(buf.data(), buf.size());
+    // auto buf = ReadFile(config.silero_vad.model);
+    // Init(buf.data(), buf.size());
+    Init(config.silero_vad.model);
 
     if (sample_rate_ != 16000) {
       SHERPA_ONNX_LOGE("Expected sample rate 16000. Given: %d",
@@ -184,6 +186,38 @@ class SileroVadModel::Impl {
   void Init(void *model_data, size_t model_data_length) {
     sess_ = std::make_unique<Ort::Session>(env_, model_data, model_data_length,
                                            sess_opts_);
+
+    GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
+    GetOutputNames(sess_.get(), &output_names_, &output_names_ptr_);
+
+    if ((input_names_.size() == 4 && output_names_.size() == 3) ||
+        IsExportedByK2Fsa()) {
+      is_v5_ = false;
+    } else if (input_names_.size() == 3 && output_names_.size() == 2) {
+      is_v5_ = true;
+
+      // 64 for 16kHz
+      // 32 for 8kHz
+      window_overlap_ = 64;
+
+      if (config_.silero_vad.window_size != 512) {
+        SHERPA_ONNX_LOGE(
+            "For silero_vad  v5, we require window_size to be 512 for 16kHz");
+        exit(-1);
+      }
+    } else {
+      SHERPA_ONNX_LOGE("Unsupported silero vad model");
+      exit(-1);
+    }
+
+    Check();
+
+    Reset();
+  }
+
+  void Init(const std::string &model_path) {
+    sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model_path).c_str(), sess_opts_);
 
     GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
     GetOutputNames(sess_.get(), &output_names_, &output_names_ptr_);

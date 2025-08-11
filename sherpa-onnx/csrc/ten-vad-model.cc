@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <utility>
@@ -209,6 +210,36 @@ class TenVadModel::Impl {
 
     sess_ = std::make_unique<Ort::Session>(env_, model_data, model_data_length,
                                            sess_opts_);
+
+    GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
+    GetOutputNames(sess_.get(), &output_names_, &output_names_ptr_);
+
+    InitMelBanks();
+
+    Check();
+
+    Reset();
+  }
+
+  void Init(const std::string &model_path) {
+    if (sample_rate_ != 16000) {
+      SHERPA_ONNX_LOGE("Expected sample rate 16000. Given: %d",
+                       config_.sample_rate);
+      SHERPA_ONNX_EXIT(-1);
+    }
+
+    if (config_.ten_vad.window_size > 768) {
+      SHERPA_ONNX_LOGE("Windows size %d for ten-vad is too large",
+                       config_.ten_vad.window_size);
+      SHERPA_ONNX_EXIT(-1);
+    }
+
+    min_silence_samples_ = sample_rate_ * config_.ten_vad.min_silence_duration;
+
+    min_speech_samples_ = sample_rate_ * config_.ten_vad.min_speech_duration;
+
+    sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model_path).c_str(), sess_opts_);
 
     GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
     GetOutputNames(sess_.get(), &output_names_, &output_names_ptr_);

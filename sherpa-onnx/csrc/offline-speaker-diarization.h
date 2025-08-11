@@ -81,6 +81,9 @@ class OfflineSpeakerDiarization {
       OfflineSpeakerDiarizationProgressCallback callback = nullptr,
       void *callback_arg = nullptr) const;
 
+  // Stop the processing
+  void Stop();
+
  private:
   std::unique_ptr<OfflineSpeakerDiarizationImpl> impl_;
 };

@@ -144,6 +144,12 @@ OfflineSpeakerDiarizationResult OfflineSpeakerDiarization::Process(
   return impl_->Process(audio, n, std::move(callback), callback_arg);
 }
 
+void OfflineSpeakerDiarization::Stop() {
+  if (impl_) {
+    impl_->Stop();
+  }
+}
+
 #if __ANDROID_API__ >= 9
 template OfflineSpeakerDiarization::OfflineSpeakerDiarization(
     AAssetManager *mgr, const OfflineSpeakerDiarizationConfig &config);

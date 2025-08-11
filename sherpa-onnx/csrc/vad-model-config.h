@@ -15,6 +15,8 @@ namespace sherpa_onnx {
 struct VadModelConfig {
   SileroVadModelConfig silero_vad;
   TenVadModelConfig ten_vad;
+  int32_t pre_padding = 0;   // in samples
+  int32_t post_padding = 0;  // in samples
 
   int32_t sample_rate = 16000;
   int32_t num_threads = 1;

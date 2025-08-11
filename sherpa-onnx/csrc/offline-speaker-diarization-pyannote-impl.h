@@ -10,6 +10,7 @@
 #include <ctime>
 #include <iomanip>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -97,7 +98,11 @@ class OfflineSpeakerDiarizationPyannoteImpl
   OfflineSpeakerDiarizationResult Process(
       const float *audio, int32_t n,
       OfflineSpeakerDiarizationProgressCallback callback = nullptr,
-      void *callback_arg = nullptr) const override {
+      void *callback_arg = nullptr) override {
+    {
+      std::lock_guard<std::mutex> lock(mtx_);
+      stop_ = false;
+    }
     auto begin = std::chrono::steady_clock::now();
     std::vector<Matrix2D> segmentations = RunSpeakerSegmentationModel(audio, n);
     auto end = std::chrono::steady_clock::now();
@@ -215,6 +220,11 @@ class OfflineSpeakerDiarizationPyannoteImpl
     return result;
   }
 
+  void Stop() override {
+    std::lock_guard<std::mutex> lock(mtx_);
+    stop_ = true;
+  }
+
  private:
   void Init() { InitPowersetMapping(); }
 
@@ -256,7 +266,7 @@ class OfflineSpeakerDiarizationPyannoteImpl
   }
 
   std::vector<Matrix2D> RunSpeakerSegmentationModel(const float *audio,
-                                                    int32_t n) const {
+                                                    int32_t n) {
     std::vector<Matrix2D> ans;
 
     const auto &meta_data = segmentation_model_.GetModelMetaData();
@@ -298,6 +308,10 @@ class OfflineSpeakerDiarizationPyannoteImpl
 
     if (config_.max_batch_size_segmentation == 1) {
       for (int32_t i = 0; i != num_chunks; ++i, p += window_shift) {
+        std::lock_guard<std::mutex> lock(mtx_);
+        if (stop_) {
+          return {};
+        }
         Matrix2D m = ProcessChunk(p);
 
         ans.push_back(std::move(m));
@@ -357,7 +371,7 @@ class OfflineSpeakerDiarizationPyannoteImpl
 
   std::vector<Matrix2D> ProcessMultipleChunks(
       const std::vector<float *> &chunks,
-      const std::vector<int32_t> &chunk_sizes) const {
+      const std::vector<int32_t> &chunk_sizes) {
     if (chunks.empty()) {
       SHERPA_ONNX_LOGE("No chunks provided for processing");
       return {};
@@ -382,6 +396,12 @@ class OfflineSpeakerDiarizationPyannoteImpl
     std::vector<float> buffer(max_batch_size * window_size);
 
     for (int32_t batch_id = 0; batch_id != num_batches; ++batch_id) {
+      {
+        std::lock_guard<std::mutex> lock(mtx_);
+        if (stop_) {
+          return {};
+        }
+      }
       std::memset(buffer.data(), 0, buffer.size() * sizeof(float));
       int32_t start_chunk_id = batch_id * max_batch_size;
       int32_t end_chunk_id = std::min(start_chunk_id + max_batch_size,
@@ -581,8 +601,7 @@ class OfflineSpeakerDiarizationPyannoteImpl
       const float *audio, int32_t n,
       const std::vector<std::vector<Int32Pair>> &sample_indexes,
       std::vector<int32_t> *valid_indexes,
-      OfflineSpeakerDiarizationProgressCallback callback,
-      void *callback_arg) const {
+      OfflineSpeakerDiarizationProgressCallback callback, void *callback_arg) {
     const auto &meta_data = segmentation_model_.GetModelMetaData();
     int32_t sample_rate = meta_data.sample_rate;
     Matrix2D ans(sample_indexes.size(), embedding_extractor_.Dim());
@@ -592,6 +611,12 @@ class OfflineSpeakerDiarizationPyannoteImpl
     int32_t k = 0;
     int32_t cur_row_index = 0;
     for (const auto &v : sample_indexes) {
+      {
+        std::lock_guard<std::mutex> lock(mtx_);
+        if (stop_) {
+          return {};
+        }
+      }
       auto stream = embedding_extractor_.CreateStream();
       for (const auto &p : v) {
         int32_t end = (p.second <= n) ? p.second : n;
@@ -639,8 +664,7 @@ class OfflineSpeakerDiarizationPyannoteImpl
       const float *audio, int32_t n,
       const std::vector<std::vector<Int32Pair>> &sample_indexes,
       std::vector<int32_t> *valid_indexes,
-      OfflineSpeakerDiarizationProgressCallback callback,
-      void *callback_arg) const {
+      OfflineSpeakerDiarizationProgressCallback callback, void *callback_arg) {
     const auto &meta_data = segmentation_model_.GetModelMetaData();
     int32_t sample_rate = meta_data.sample_rate;
     Matrix2D ans(sample_indexes.size(), embedding_extractor_.Dim());
@@ -676,6 +700,12 @@ class OfflineSpeakerDiarizationPyannoteImpl
                       config_.max_batch_size_embedding;
 
     for (int32_t batch_id = 0; batch_id != num_batches; ++batch_id) {
+      {
+        std::lock_guard<std::mutex> lock(mtx_);
+        if (stop_) {
+          return {};
+        }
+      }
       int32_t start_stream_id = batch_id * config_.max_batch_size_embedding;
       int32_t end_stream_id =
           std::min(start_stream_id + config_.max_batch_size_embedding,
@@ -931,6 +961,8 @@ class OfflineSpeakerDiarizationPyannoteImpl
   SpeakerEmbeddingExtractor embedding_extractor_;
   std::unique_ptr<FastClustering> clustering_;
   Matrix2DInt32 powerset_mapping_;
+  std::mutex mtx_;
+  bool stop_ = false;
 };
 
 }  // namespace sherpa_onnx

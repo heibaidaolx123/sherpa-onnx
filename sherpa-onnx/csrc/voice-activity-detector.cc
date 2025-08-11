@@ -30,6 +30,10 @@ class VoiceActivityDetector::Impl {
         config_(config),
         buffer_(buffer_size_in_seconds * config.sample_rate) {
     Init();
+    if (config_.post_padding > model_->MinSilenceDurationSamples()) {
+      throw std::invalid_argument(
+          "post_padding must be less than or equal to min_silence_duration");
+    }
   }
 
   template <typename Manager>
@@ -93,11 +97,13 @@ class VoiceActivityDetector::Impl {
       if (start_ == -1) {
         // beginning of speech
         start_ = std::max(buffer_.Tail() - 2 * model_->WindowSize() -
-                              model_->MinSpeechDurationSamples(),
+                              model_->MinSpeechDurationSamples() -
+                              config_.pre_padding,
                           buffer_.Head());
         cur_segment_.start = start_;
       }
-      int32_t num_samples = buffer_.Tail() - start_ - 1;
+      int32_t num_samples = std::max(
+          buffer_.Tail() - model_->MinSilenceDurationSamples() - start_, 0);
       cur_segment_.samples = buffer_.Get(start_, num_samples);
     } else {
       // non-speech
@@ -107,7 +113,8 @@ class VoiceActivityDetector::Impl {
 
       if (start_ != -1 && buffer_.Size()) {
         // end of speech, save the speech segment
-        int32_t end = buffer_.Tail() - model_->MinSilenceDurationSamples();
+        int32_t end = buffer_.Tail() - model_->MinSilenceDurationSamples() +
+                      config_.post_padding;
 
         std::vector<float> s = buffer_.Get(start_, end - start_);
         SpeechSegment segment;
@@ -122,7 +129,7 @@ class VoiceActivityDetector::Impl {
 
       if (start_ == -1) {
         int32_t end = buffer_.Tail() - 2 * model_->WindowSize() -
-                      model_->MinSpeechDurationSamples();
+                      model_->MinSpeechDurationSamples() - config_.pre_padding;
         int32_t n = std::max(0, end - buffer_.Head());
         if (n > 0) {
           buffer_.Pop(n);

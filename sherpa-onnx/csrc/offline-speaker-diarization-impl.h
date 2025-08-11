@@ -31,7 +31,9 @@ class OfflineSpeakerDiarizationImpl {
   virtual OfflineSpeakerDiarizationResult Process(
       const float *audio, int32_t n,
       OfflineSpeakerDiarizationProgressCallback callback = nullptr,
-      void *callback_arg = nullptr) const = 0;
+      void *callback_arg = nullptr) = 0;
+
+  virtual void Stop() = 0;
 };
 
 }  // namespace sherpa_onnx

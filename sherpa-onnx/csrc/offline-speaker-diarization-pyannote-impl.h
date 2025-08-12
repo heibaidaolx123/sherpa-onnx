@@ -164,6 +164,10 @@ class OfflineSpeakerDiarizationPyannoteImpl
           audio, n, chunk_speaker_samples_list_pair.second, &valid_indexes,
           std::move(callback), callback_arg);
     }
+    if (embeddings.rows() == 0 || embeddings.cols() == 0) {
+      SHERPA_ONNX_LOGE("Failed to compute embeddings");
+      return {};
+    }
     end = std::chrono::steady_clock::now();
     elapsed_seconds =
         std::chrono::duration_cast<std::chrono::milliseconds>(end - begin)

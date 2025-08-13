@@ -26,6 +26,7 @@ static OnlineRecognizerResult Convert(const OnlineParaformerDecoderResult &src,
                                       const SymbolTable &sym_table) {
   OnlineRecognizerResult r;
   r.tokens.reserve(src.tokens.size());
+  r.timestamps.reserve(src.tokens.size());
 
   std::string text;
 
@@ -35,6 +36,7 @@ static OnlineRecognizerResult Convert(const OnlineParaformerDecoderResult &src,
   for (int32_t i = 0; i != src.tokens.size(); ++i) {
     auto sym = sym_table[src.tokens[i]];
     r.tokens.push_back(sym);
+    r.timestamps.push_back(src.fired_frame_indexes[i]);
 
     if ((sym.back() != '@') || (sym.size() > 2 && sym[sym.size() - 2] != '@')) {
       // sym does not end with "@@"
@@ -211,9 +213,10 @@ class OnlineRecognizerParaformerImpl : public OnlineRecognizerImpl {
  private:
   void DecodeStream(OnlineStream *s) const {
     const auto num_processed_frames = s->GetNumProcessedFrames();
+    int32_t total_num_frames = s->NumFramesReady();
     std::vector<float> frames = s->GetFrames(num_processed_frames, chunk_size_);
     s->GetNumProcessedFrames() += chunk_size_ - 1;
-
+    int original_num_frames = frames.size() / s->FeatureDim();
     frames = ApplyLFR(frames);
     ApplyCMVN(&frames);
     PositionalEncoding(&frames, num_processed_frames / model_.LfrWindowShift());
@@ -290,6 +293,8 @@ class OnlineRecognizerParaformerImpl : public OnlineRecognizerImpl {
 
     float integrate = alpha_cache[0];
 
+    std::vector<int> fired_frame_indexes;
+    fired_frame_indexes.reserve(encoder_out_shape[1]);
     for (int32_t i = 0; i != encoder_out_shape[1]; ++i) {
       float this_alpha = p_alpha[i];
       if (integrate + this_alpha < threshold) {
@@ -299,7 +304,8 @@ class OnlineRecognizerParaformerImpl : public OnlineRecognizerImpl {
                         initial_hidden.data());
         continue;
       }
-
+      fired_frame_indexes.push_back(num_processed_frames +
+                                    i * model_.LfrWindowShift());
       // fire
       ScaleAddInPlace(p_encoder_out + i * encoder_out_shape[2],
                       encoder_out_shape[2], threshold - integrate,
@@ -313,6 +319,14 @@ class OnlineRecognizerParaformerImpl : public OnlineRecognizerImpl {
     }
 
     alpha_cache[0] = integrate;
+
+    // printf(
+    //     "num_processed_frames: %d, total_num_frames: %d, original num frames:
+    //     "
+    //     "%d, lfr num frames: %d, "
+    //     "num_tokens: %d\n",
+    //     num_processed_frames, total_num_frames, original_num_frames,
+    //     num_frames, acoustic_embedding.size() / initial_hidden.size());
 
     if (acoustic_embedding.empty()) {
       return;
@@ -374,9 +388,10 @@ class OnlineRecognizerParaformerImpl : public OnlineRecognizerImpl {
       if (t == 0) {
         continue;
       }
-
+      int32_t frame_index = fired_frame_indexes[i];
       non_blank_detected = true;
       result.tokens.push_back(t);
+      result.fired_frame_indexes.push_back(frame_index);
     }
 
     if (non_blank_detected) {

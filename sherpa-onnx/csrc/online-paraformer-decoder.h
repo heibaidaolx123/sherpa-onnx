@@ -15,6 +15,8 @@ struct OnlineParaformerDecoderResult {
   /// The decoded token IDs
   std::vector<int32_t> tokens;
 
+  std::vector<int> fired_frame_indexes;
+
   int32_t last_non_blank_frame_index = 0;
 };
 

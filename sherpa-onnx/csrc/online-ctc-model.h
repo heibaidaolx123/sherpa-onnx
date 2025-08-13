@@ -79,6 +79,8 @@ class OnlineCtcModel {
   virtual bool SupportBatchProcessing() const { return true; }
 
   virtual bool UseWhisperFeature() const { return false; }
+
+  virtual int32_t SubsamplingFactor() const { return 4; }
 };
 
 }  // namespace sherpa_onnx

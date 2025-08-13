@@ -210,7 +210,7 @@ class OnlineRecognizerCtcImpl : public OnlineRecognizerImpl {
 
     // TODO(fangjun): Remember to change these constants if needed
     int32_t frame_shift_ms = 10;
-    int32_t subsampling_factor = 4;
+    int32_t subsampling_factor = model_->SubsamplingFactor();
     auto r =
         ConvertCtc(decoder_result, sym_, frame_shift_ms, subsampling_factor,
                    s->GetCurrentSegment(), s->GetNumFramesSinceStart());
@@ -334,6 +334,12 @@ class OnlineRecognizerCtcImpl : public OnlineRecognizerImpl {
     decoder_->Decode(out[0].GetTensorData<float>(), log_probs_shape[0],
                      log_probs_shape[1], log_probs_shape[2], &results, &s, 1);
     s->SetCtcResult(results[0]);
+    // printf(
+    //     "num_processed_frames: %d chunk_length: %d chunk_shift: %d
+    //     num_states: "
+    //     "%d log_probs_shape: %d %d %d\n",
+    //     num_processed_frames, chunk_length, chunk_shift, num_states,
+    //     log_probs_shape[0], log_probs_shape[1], log_probs_shape[2]);
   }
 
  private:

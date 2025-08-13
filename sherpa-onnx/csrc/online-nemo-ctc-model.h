@@ -65,6 +65,8 @@ class OnlineNeMoCtcModel : public OnlineCtcModel {
 
   bool SupportBatchProcessing() const override { return true; }
 
+  virtual int32_t SubsamplingFactor() const { return 8; }
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <string>
 
 #if __ANDROID_API__ >= 9
@@ -36,8 +37,9 @@ class OnlineNeMoCtcModel::Impl {
         sess_opts_(GetSessionOptions(config)),
         allocator_{} {
     {
-      auto buf = ReadFile(config.nemo_ctc.model);
-      Init(buf.data(), buf.size());
+      // auto buf = ReadFile(config.nemo_ctc.model);
+      // Init(buf.data(), buf.size());
+      Init(config.nemo_ctc.model);
     }
   }
 
@@ -196,6 +198,48 @@ class OnlineNeMoCtcModel::Impl {
   void Init(void *model_data, size_t model_data_length) {
     sess_ = std::make_unique<Ort::Session>(env_, model_data, model_data_length,
                                            sess_opts_);
+
+    GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
+
+    GetOutputNames(sess_.get(), &output_names_, &output_names_ptr_);
+
+    // get meta data
+    Ort::ModelMetadata meta_data = sess_->GetModelMetadata();
+    if (config_.debug) {
+      std::ostringstream os;
+      PrintModelMetadata(os, meta_data);
+#if __OHOS__
+      SHERPA_ONNX_LOGE("%{public}s", os.str().c_str());
+#else
+      SHERPA_ONNX_LOGE("%s", os.str().c_str());
+#endif
+    }
+
+    Ort::AllocatorWithDefaultOptions allocator;  // used in the macro below
+    SHERPA_ONNX_READ_META_DATA(window_size_, "window_size");
+    SHERPA_ONNX_READ_META_DATA(chunk_shift_, "chunk_shift");
+    SHERPA_ONNX_READ_META_DATA(subsampling_factor_, "subsampling_factor");
+    SHERPA_ONNX_READ_META_DATA(vocab_size_, "vocab_size");
+    SHERPA_ONNX_READ_META_DATA(cache_last_channel_dim1_,
+                               "cache_last_channel_dim1");
+    SHERPA_ONNX_READ_META_DATA(cache_last_channel_dim2_,
+                               "cache_last_channel_dim2");
+    SHERPA_ONNX_READ_META_DATA(cache_last_channel_dim3_,
+                               "cache_last_channel_dim3");
+    SHERPA_ONNX_READ_META_DATA(cache_last_time_dim1_, "cache_last_time_dim1");
+    SHERPA_ONNX_READ_META_DATA(cache_last_time_dim2_, "cache_last_time_dim2");
+    SHERPA_ONNX_READ_META_DATA(cache_last_time_dim3_, "cache_last_time_dim3");
+
+    // need to increase by 1 since the blank token is not included in computing
+    // vocab_size in NeMo.
+    vocab_size_ += 1;
+
+    InitStates();
+  }
+
+  void Init(const std::string &model_path) {
+    sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model_path).c_str(), sess_opts_);
 
     GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
 

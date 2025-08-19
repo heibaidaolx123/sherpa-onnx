@@ -26,7 +26,6 @@ struct OfflineModelConfig {
   OfflineParaformerModelConfig paraformer;
   OfflineNemoEncDecCtcModelConfig nemo_ctc;
   OfflineWhisperModelConfig whisper;
-  OfflineWhisperModelConfig whisper_opt;
   OfflineFireRedAsrModelConfig fire_red_asr;
   OfflineTdnnModelConfig tdnn;
   OfflineZipformerCtcModelConfig zipformer_ctc;

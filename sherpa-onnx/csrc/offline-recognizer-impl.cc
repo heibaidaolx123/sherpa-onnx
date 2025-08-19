@@ -32,6 +32,7 @@
 #include "sherpa-onnx/csrc/offline-recognizer-sense-voice-impl.h"
 #include "sherpa-onnx/csrc/offline-recognizer-transducer-impl.h"
 #include "sherpa-onnx/csrc/offline-recognizer-transducer-nemo-impl.h"
+#include "sherpa-onnx/csrc/offline-recognizer-whisper-impl-opt.h"
 #include "sherpa-onnx/csrc/offline-recognizer-whisper-impl.h"
 #include "sherpa-onnx/csrc/text-utils.h"
 
@@ -53,6 +54,10 @@ std::unique_ptr<OfflineRecognizerImpl> OfflineRecognizerImpl::Create(
       !config.model_config.wenet_ctc.model.empty() ||
       !config.model_config.dolphin.model.empty()) {
     return std::make_unique<OfflineRecognizerCtcImpl>(config);
+  }
+
+  if (!config.model_config.whisper_opt.encoder.empty()) {
+    return std::make_unique<OfflineRecognizerWhisperImplOpt>(config);
   }
 
   if (!config.model_config.whisper.encoder.empty()) {
@@ -511,8 +516,8 @@ OfflineRecognizerImpl::OfflineRecognizerImpl(
         itn_list_.push_back(
             std::make_unique<kaldifst::TextNormalizer>(std::move(r)));
       }  // for (; !reader->Done(); reader->Next())
-    }    // for (const auto &f : files)
-  }      // if (!config.rule_fars.empty())
+    }  // for (const auto &f : files)
+  }  // if (!config.rule_fars.empty())
 
   if (!config.hr.dict_dir.empty() && !config.hr.lexicon.empty() &&
       !config.hr.rule_fsts.empty()) {

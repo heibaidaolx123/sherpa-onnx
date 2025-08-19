@@ -73,8 +73,10 @@ set(sources
   offline-wenet-ctc-model-config.cc
   offline-wenet-ctc-model.cc
   offline-whisper-greedy-search-decoder.cc
+  offline-whisper-greedy-search-decoder-opt.cc
   offline-whisper-model-config.cc
   offline-whisper-model.cc
+  offline-whisper-model-opt.cc
   offline-zipformer-ctc-model-config.cc
   offline-zipformer-ctc-model.cc
   online-conformer-transducer-model.cc

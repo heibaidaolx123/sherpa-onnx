@@ -57,7 +57,11 @@ std::unique_ptr<OfflineRecognizerImpl> OfflineRecognizerImpl::Create(
   }
 
   if (!config.model_config.whisper.encoder.empty()) {
-    return std::make_unique<OfflineRecognizerWhisperImplOpt>(config);
+    if (config.model_config.whisper_use_opt) {
+      return std::make_unique<OfflineRecognizerWhisperImplOpt>(config);
+    } else {
+      return std::make_unique<OfflineRecognizerWhisperImpl>(config);
+    }
   }
 
   if (!config.model_config.whisper.encoder.empty()) {

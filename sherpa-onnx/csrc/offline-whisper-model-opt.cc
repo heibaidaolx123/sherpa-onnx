@@ -107,40 +107,44 @@ class OfflineWhisperModelOpt::Impl {
     return {std::move(encoder_out[0]), std::move(encoder_out[1])};
   }
 
-  std::tuple<Ort::Value, Ort::Value, Ort::Value, Ort::Value, Ort::Value,
-             Ort::Value>
-  ForwardDecoder(Ort::Value tokens, Ort::Value n_layer_self_k_cache,
-                 Ort::Value n_layer_self_v_cache, Ort::Value n_layer_cross_k,
-                 Ort::Value n_layer_cross_v, Ort::Value offset) {
-    std::array<Ort::Value, 6> decoder_input = {std::move(tokens),
+  std::tuple<Ort::Value, Ort::Value, Ort::Value> ForwardDecoder(
+      Ort::Value tokens, Ort::Value n_layer_self_k_cache,
+      Ort::Value n_layer_self_v_cache, Ort::Value n_layer_cross_k,
+      Ort::Value n_layer_cross_v, Ort::Value offset, Ort::Value attention_mask,
+      Ort::Value sel) {
+    std::array<Ort::Value, 8> decoder_input = {std::move(tokens),
                                                std::move(n_layer_self_k_cache),
                                                std::move(n_layer_self_v_cache),
                                                std::move(n_layer_cross_k),
                                                std::move(n_layer_cross_v),
-                                               std::move(offset)};
+                                               std::move(offset),
+                                               std::move(attention_mask),
+                                               std::move(sel)};
 
     auto decoder_out = decoder_sess_->Run(
         {}, decoder_input_names_ptr_.data(), decoder_input.data(),
         decoder_input.size(), decoder_output_names_ptr_.data(),
         decoder_output_names_ptr_.size());
 
-    return std::tuple<Ort::Value, Ort::Value, Ort::Value, Ort::Value,
-                      Ort::Value, Ort::Value>{
-        std::move(decoder_out[0]),   std::move(decoder_out[1]),
-        std::move(decoder_out[2]),   std::move(decoder_input[3]),
-        std::move(decoder_input[4]), std::move(decoder_input[5])};
+    return std::tuple<Ort::Value, Ort::Value, Ort::Value>{
+        std::move(decoder_out[0]), std::move(decoder_out[1]),
+        std::move(decoder_out[2])};
   }
 
-  int32_t DetectLanguage(Ort::Value &cross_k,    // NOLINT
-                         Ort::Value &cross_v) {  // NOLINT
-    int64_t token_val = SOT();
-    std::array<int64_t, 2> token_shape{1, 1};
+  std::vector<int32_t> DetectLanguage(Ort::Value &cross_k,    // NOLINT
+                                      Ort::Value &cross_v) {  // NOLINT
+    auto kv_shape = cross_k.GetTensorTypeAndShapeInfo().GetShape();
+    int32_t batch_size = kv_shape[1];
+
+    std::vector<int64_t> token_val(batch_size, SOT());
+    std::array<int64_t, 2> token_shape{batch_size, 1};
 
     auto memory_info =
         Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
 
     Ort::Value tokens = Ort::Value::CreateTensor(
-        memory_info, &token_val, 1, token_shape.data(), token_shape.size());
+        memory_info, token_val.data(), token_val.size(), token_shape.data(),
+        token_shape.size());
 
     auto self_kv_cache = GetInitialSelfKVCache();
 
@@ -149,40 +153,53 @@ class OfflineWhisperModelOpt::Impl {
         Allocator(), offset_shape.data(), offset_shape.size());
     *(offset.GetTensorMutableData<int64_t>()) = 0;
 
-    auto decoder_out =
-        ForwardDecoder(std::move(tokens), std::move(self_kv_cache.first),
-                       std::move(self_kv_cache.second), std::move(cross_k),
-                       std::move(cross_v), std::move(offset));
+    std::array<int64_t, 1> attention_mask_shape{1};
+    Ort::Value attention_mask = Ort::Value::CreateTensor<int32_t>(
+        Allocator(), attention_mask_shape.data(), attention_mask_shape.size());
+    *(attention_mask.GetTensorMutableData<int32_t>()) = 1;
 
-    cross_k = std::move(std::get<3>(decoder_out));
-    cross_v = std::move(std::get<4>(decoder_out));
+    std::array<int64_t, 3> sel_shape{1, n_text_ctx_, 1};
+    Ort::Value sel = Ort::Value::CreateTensor<bool>(
+        Allocator(), sel_shape.data(), sel_shape.size());
+    *(sel.GetTensorMutableData<bool>()) = true;
+
+    auto decoder_out = ForwardDecoder(
+        std::move(tokens), std::move(self_kv_cache.first),
+        std::move(self_kv_cache.second), std::move(View(&cross_k)),
+        std::move(View(&cross_v)), std::move(offset), std::move(attention_mask),
+        std::move(sel));
 
     const float *p_logits = std::get<0>(decoder_out).GetTensorData<float>();
+    const auto &p_logits_shape =
+        std::get<0>(decoder_out).GetTensorTypeAndShapeInfo().GetShape();
+    const int32_t vocab_size = p_logits_shape[2];
     const auto &all_language_ids = GetAllLanguageIDs();
 
-    int32_t lang_id = all_language_ids[0];
-    float this_logit = p_logits[lang_id];
+    std::vector<int32_t> result(batch_size, all_language_ids[0]);
 
-    for (int32_t i = 1; i != all_language_ids.size(); ++i) {
-      int32_t id = all_language_ids[i];
-      float p = p_logits[id];
+    for (int32_t i = 0; i < batch_size; ++i) {
+      int32_t lang_id = all_language_ids[0];
+      const float *p_logits_batch = p_logits + i * vocab_size;
+      float this_logit = p_logits_batch[lang_id];
+      for (int32_t j = 1; j != all_language_ids.size(); ++j) {
+        int32_t id = all_language_ids[j];
+        float p = p_logits_batch[id];
 
-      if (p > this_logit) {
-        this_logit = p;
-        lang_id = id;
+        if (p > this_logit) {
+          this_logit = p;
+          lang_id = id;
+        }
       }
+      result[i] = lang_id;
     }
 
-    if (config_.debug) {
-      SHERPA_ONNX_LOGE("Detected language: %s",
-                       GetID2Lang().at(lang_id).c_str());
-    }
-
-    return lang_id;
+    return result;
   }
 
-  std::pair<Ort::Value, Ort::Value> GetInitialSelfKVCache() {
-    std::array<int64_t, 4> shape{n_text_layer_, 1, n_text_ctx_, n_text_state_};
+  std::pair<Ort::Value, Ort::Value> GetInitialSelfKVCache(
+      const int32_t batch_size = 1) {
+    std::array<int64_t, 4> shape{n_text_layer_, batch_size, n_text_ctx_,
+                                 n_text_state_};
 
     Ort::Value n_layer_self_k_cache = Ort::Value::CreateTensor<float>(
         Allocator(), shape.data(), shape.size());
@@ -442,28 +459,28 @@ std::pair<Ort::Value, Ort::Value> OfflineWhisperModelOpt::ForwardEncoder(
   return impl_->ForwardEncoder(std::move(features));
 }
 
-std::tuple<Ort::Value, Ort::Value, Ort::Value, Ort::Value, Ort::Value,
-           Ort::Value>
-OfflineWhisperModelOpt::ForwardDecoder(Ort::Value tokens,
-                                       Ort::Value n_layer_self_k_cache,
-                                       Ort::Value n_layer_self_v_cache,
-                                       Ort::Value n_layer_cross_k,
-                                       Ort::Value n_layer_cross_v,
-                                       Ort::Value offset) const {
+std::tuple<Ort::Value, Ort::Value, Ort::Value>
+OfflineWhisperModelOpt::ForwardDecoder(
+    Ort::Value tokens, Ort::Value n_layer_self_k_cache,
+    Ort::Value n_layer_self_v_cache, Ort::Value n_layer_cross_k,
+    Ort::Value n_layer_cross_v, Ort::Value offset, Ort::Value attention_mask,
+    Ort::Value sel) const {
   return impl_->ForwardDecoder(
       std::move(tokens), std::move(n_layer_self_k_cache),
       std::move(n_layer_self_v_cache), std::move(n_layer_cross_k),
-      std::move(n_layer_cross_v), std::move(offset));
+      std::move(n_layer_cross_v), std::move(offset), std::move(attention_mask),
+      std::move(sel));
 }
 
-int32_t OfflineWhisperModelOpt::DetectLanguage(Ort::Value &cross_k,    // NOLINT
-                                               Ort::Value &cross_v) {  // NOLINT
+std::vector<int32_t> OfflineWhisperModelOpt::DetectLanguage(
+    Ort::Value &cross_k,    // NOLINT
+    Ort::Value &cross_v) {  // NOLINT
   return impl_->DetectLanguage(cross_k, cross_v);
 }
 
-std::pair<Ort::Value, Ort::Value>
-OfflineWhisperModelOpt::GetInitialSelfKVCache() const {
-  return impl_->GetInitialSelfKVCache();
+std::pair<Ort::Value, Ort::Value> OfflineWhisperModelOpt::GetInitialSelfKVCache(
+    const int32_t batch_size) const {
+  return impl_->GetInitialSelfKVCache(batch_size);
 }
 
 OrtAllocator *OfflineWhisperModelOpt::Allocator() const {

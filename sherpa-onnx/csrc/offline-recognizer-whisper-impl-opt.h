@@ -67,14 +67,6 @@ class OfflineRecognizerWhisperImplOpt : public OfflineRecognizerImpl {
   }
 
   void DecodeStreams(OfflineStream **ss, int32_t n) const override {
-    // // batch decoding is not implemented yet
-    // for (int32_t i = 0; i != n; ++i) {
-    //   DecodeStream(ss[i]);
-    // }
-    if (n == 1) {
-      DecodeStream(ss[0]);
-      return;
-    }
     decoder_->SetConfig(config_.model_config.whisper);
 
     int32_t max_num_frames = 3000;
@@ -121,47 +113,12 @@ class OfflineRecognizerWhisperImplOpt : public OfflineRecognizerImpl {
       float *p_v_batched =
           cross_kv_batched.second.GetTensorMutableData<float>();
 
-      std::array<int64_t, 4> shape{n_text_layer, 1, n_audio_ctx, n_text_state};
-      std::vector<float> k_buf(n_text_layer * n_audio_ctx * n_text_state);
-      std::vector<float> v_buf(n_text_layer * n_audio_ctx * n_text_state);
-
-      for (int32_t i = 0; i < n; ++i) {
-        // for (int32_t i = n - 1; i >= 0; --i) {
+      auto result_vec = decoder_->Decode(
+          std::move(cross_kv_batched.first), std::move(cross_kv_batched.second),
+          *std::max_element(num_frames_vec.begin(), num_frames_vec.end()));
+      for (int i = 0; i < n; ++i) {
         auto s = ss[i];
-        auto num_frames = num_frames_vec[i];
-
-        Ort::Value n_layer_cross_k = Ort::Value::CreateTensor<float>(
-            memory_info, k_buf.data(), k_buf.size(), shape.data(),
-            shape.size());
-        Ort::Value n_layer_cross_v = Ort::Value::CreateTensor<float>(
-            memory_info, v_buf.data(), v_buf.size(), shape.data(),
-            shape.size());
-        // Ort::Value n_layer_cross_k = Ort::Value::CreateTensor<float>(
-        //     model_->Allocator(), shape.data(), shape.size());
-        // Ort::Value n_layer_cross_v = Ort::Value::CreateTensor<float>(
-        //     model_->Allocator(), shape.data(), shape.size());
-
-        for (int32_t l = 0; l < n_text_layer; ++l) {
-          float *p_k_l_src =
-              p_k_batched + (l * n + i) * n_audio_ctx * n_text_state;
-          float *p_v_l_src =
-              p_v_batched + (l * n + i) * n_audio_ctx * n_text_state;
-          float *p_k_l_dst = k_buf.data() + l * n_audio_ctx * n_text_state;
-          float *p_v_l_dst = v_buf.data() + l * n_audio_ctx * n_text_state;
-          // float *p_k_l_dst = n_layer_cross_k.GetTensorMutableData<float>() +
-          //                    l * n_audio_ctx * n_text_state;
-          // float *p_v_l_dst = n_layer_cross_v.GetTensorMutableData<float>() +
-          //                    l * n_audio_ctx * n_text_state;
-
-          std::copy(p_k_l_src, p_k_l_src + n_audio_ctx * n_text_state,
-                    p_k_l_dst);
-          std::copy(p_v_l_src, p_v_l_src + n_audio_ctx * n_text_state,
-                    p_v_l_dst);
-        }
-        auto results = decoder_->Decode(std::move(n_layer_cross_k),
-                                        std::move(n_layer_cross_v), num_frames);
-
-        auto r = Convert(results[0], symbol_table_);
+        auto r = Convert(result_vec[i], symbol_table_);
         s->SetResult(r);
       }
     } catch (const Ort::Exception &ex) {
@@ -178,70 +135,8 @@ class OfflineRecognizerWhisperImplOpt : public OfflineRecognizerImpl {
 
  private:
   void DecodeStream(OfflineStream *s) const {
-    decoder_->SetConfig(config_.model_config.whisper);
-
-    int32_t max_num_frames = 3000;
-    auto memory_info =
-        Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-
-    int32_t feat_dim = s->FeatureDim();
-    std::vector<float> f = s->GetFrames();
-    int32_t num_frames = f.size() / feat_dim;
-
-    // we use 50 here so that there will be some zero tail paddings
-    if (num_frames >= max_num_frames - 50) {
-      SHERPA_ONNX_LOGE(
-          "Only waves less than 30 seconds are supported. We process only the "
-          "first 30 seconds and discard the remaining data");
-      num_frames = max_num_frames - 50;
-    }
-
-    model_->NormalizeFeatures(f.data(), num_frames, feat_dim);
-
-    // note that 1000 is an experience-value.
-    // You can replace 1000 by other values, say, 100.
-    //
-    // Since we have removed the 30 seconds constraint, we need
-    // tail_padding_frames so that whisper is able to detect the eot token.
-    int32_t tail_padding_frames = 1000;
-
-    if (config_.model_config.whisper.tail_paddings > 0) {
-      tail_padding_frames = config_.model_config.whisper.tail_paddings;
-    }
-
-    int32_t actual_frames =
-        std::min(num_frames + tail_padding_frames, max_num_frames);
-
-    std::array<int64_t, 3> shape{1, actual_frames, feat_dim};
-
-    Ort::Value mel = Ort::Value::CreateTensor<float>(
-        model_->Allocator(), shape.data(), shape.size());
-
-    float *p_mel = mel.GetTensorMutableData<float>();
-    std::copy(f.data(), f.data() + num_frames * feat_dim, p_mel);
-
-    std::fill_n(p_mel + num_frames * feat_dim,
-                (actual_frames - num_frames) * feat_dim, 0);
-
-    mel = Transpose12(model_->Allocator(), &mel);
-
-    try {
-      auto cross_kv = model_->ForwardEncoder(std::move(mel));
-
-      auto results = decoder_->Decode(std::move(cross_kv.first),
-                                      std::move(cross_kv.second), num_frames);
-
-      auto r = Convert(results[0], symbol_table_);
-      s->SetResult(r);
-    } catch (const Ort::Exception &ex) {
-      SHERPA_ONNX_LOGE(
-          "\n\nCaught exception:\n\n%s\n\nReturn an empty result. Number of "
-          "input frames: %d, Current tail "
-          "paddings: %d. If you see a lot of such exceptions, please consider "
-          "using a larger --whisper-tail-paddings",
-          ex.what(), num_frames, tail_padding_frames);
-      return;
-    }
+    std::vector<OfflineStream *> streams = {s};
+    DecodeStreams(streams.data(), streams.size());
   }
 
  private:

@@ -48,7 +48,7 @@ class OfflineWhisperModelOpt {
 
   /** Run the decoder model.
    *
-   * @param tokens A int64 tensor of shape (N, num_words)
+   * @param tokens A int64 tensor of shape (N, 1)
    * @param n_layer_self_k_cache  A 4-D tensor of shape
    *                              (n_text_layer, N, n_text_ctx, n_text_state).
    * @param n_layer_self_v_cache  A 4-D tensor of shape
@@ -57,25 +57,26 @@ class OfflineWhisperModelOpt {
    *                              (n_text_layer, N, n_audio_ctx, n_text_state).
    * @param n_layer_cross_v       A 4-D tensor of shape
    *                              (n_text_layer, N, n_audio_ctx, n_text_state).
-   * @param offset A int64 tensor of shape (N,)
+   * @param offset A int64 tensor of shape (1,)
+   * @param attention_mask A int32 tensor of (1,)
+   * @param sel A bool tensor of (1, n_text_ctx, 1)
    *
    * @return Return a tuple containing 6 tensors:
    *
-   *  - logits A 3-D tensor of shape (N, num_words, vocab_size)
-   *  - out_n_layer_self_k_cache Same shape as n_layer_self_k_cache
-   *  - out_n_layer_self_v_cache Same shape as n_layer_self_v_cache
-   *  - out_n_layer_cross_k Same as n_layer_cross_k
-   *  - out_n_layer_cross_v Same as n_layer_cross_v
-   *  - out_offset Same as offset
+   *  - logits A 3-D tensor of shape (N, 1, vocab_size)
+   *  - out_n_layer_self_k_cache A 4-D tensor of shape
+   *                              (n_text_layer, N, 1, n_text_state).
+   *  - out_n_layer_self_v_cache A 4-D tensor of shape
+   *                              (n_text_layer, N, 1, n_text_state).
    */
-  std::tuple<Ort::Value, Ort::Value, Ort::Value, Ort::Value, Ort::Value,
-             Ort::Value>
-  ForwardDecoder(Ort::Value tokens, Ort::Value n_layer_self_k_cache,
-                 Ort::Value n_layer_self_v_cache, Ort::Value n_layer_cross_k,
-                 Ort::Value n_layer_cross_v, Ort::Value offset) const;
+  std::tuple<Ort::Value, Ort::Value, Ort::Value> ForwardDecoder(
+      Ort::Value tokens, Ort::Value n_layer_self_k_cache,
+      Ort::Value n_layer_self_v_cache, Ort::Value n_layer_cross_k,
+      Ort::Value n_layer_cross_v, Ort::Value offset, Ort::Value attention_mask,
+      Ort::Value sel) const;
 
-  int32_t DetectLanguage(Ort::Value &cross_k,   // NOLINT
-                         Ort::Value &cross_v);  // NOLINT
+  std::vector<int32_t> DetectLanguage(Ort::Value &cross_k,   // NOLINT
+                                      Ort::Value &cross_v);  // NOLINT
 
   /** Return the initial self kv cache in a pair
    *  - n_layer_self_k_cache A 4-D tensor of shape
@@ -83,7 +84,8 @@ class OfflineWhisperModelOpt {
    *  - n_layer_self_v_cache A 4-D tensor of shape
    *                         (n_text_layer, N, n_audio_ctx, n_text_state).
    */
-  std::pair<Ort::Value, Ort::Value> GetInitialSelfKVCache() const;
+  std::pair<Ort::Value, Ort::Value> GetInitialSelfKVCache(
+      const int32_t batch_size = 1) const;
   const std::vector<int64_t> &GetInitialTokens() const;
   const std::vector<int32_t> &GetAllLanguageIDs() const;
   const std::unordered_map<std::string, int32_t> &GetLang2ID() const;
@@ -112,4 +114,4 @@ class OfflineWhisperModelOpt {
 
 }  // namespace sherpa_onnx
 
-#endif  // SHERPA_ONNX_CSRC_OFFLINE_WHISPER_MODEL_H_
+#endif  // SHERPA_ONNX_CSRC_OFFLINE_WHISPER_MODEL_OPT_H_

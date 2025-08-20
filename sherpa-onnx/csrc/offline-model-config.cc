@@ -27,6 +27,9 @@ void OfflineModelConfig::Register(ParseOptions *po) {
   po->Register("telespeech-ctc", &telespeech_ctc,
                "Path to model.onnx for telespeech ctc");
 
+  po->Register("whisper-use-opt", &whisper_use_opt,
+               "Whether to use optimized whisper model");
+
   po->Register("tokens", &tokens, "Path to tokens.txt");
 
   po->Register("num-threads", &num_threads,

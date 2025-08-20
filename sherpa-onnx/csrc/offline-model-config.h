@@ -36,6 +36,7 @@ struct OfflineModelConfig {
   OfflineCanaryModelConfig canary;
   std::string telespeech_ctc;
 
+  bool whisper_use_opt = false;
   std::string tokens;
   int32_t num_threads = 2;
   bool debug = false;

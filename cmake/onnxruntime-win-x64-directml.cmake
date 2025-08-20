@@ -2,6 +2,7 @@
 message(STATUS "CMAKE_SYSTEM_NAME: ${CMAKE_SYSTEM_NAME}")
 message(STATUS "CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
 message(STATUS "CMAKE_VS_PLATFORM_NAME: ${CMAKE_VS_PLATFORM_NAME}")
+message(STATUS "Using Sherpa ONNX with DirectML")
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL Windows)
   message(FATAL_ERROR "This file is for Windows only. Given: ${CMAKE_SYSTEM_NAME}")
@@ -22,19 +23,31 @@ endif()
 if(location_onnxruntime_header_dir AND location_onnxruntime_lib)
     message("Use preinstall onnxruntime with directml: ${location_onnxruntime_lib}")
 else()
+    # set(VERSION_ONNXRUNTIME "1.14.1")
+    # set(onnxruntime_URL  "https://globalcdn.nuget.org/packages/microsoft.ml.onnxruntime.directml.1.14.1.nupkg")
+    # set(onnxruntime_URL2 "https://hf-mirror.com/csukuangfj/sherpa-onnx-cmake-deps/resolve/main/microsoft.ml.onnxruntime.directml.1.14.1.nupkg")
+    # set(onnxruntime_HASH "SHA256=c8ae7623385b19cd5de968d0df5383e13b97d1b3a6771c9177eac15b56013a5a")
 
-    set(onnxruntime_URL  "https://globalcdn.nuget.org/packages/microsoft.ml.onnxruntime.directml.1.14.1.nupkg")
-    set(onnxruntime_URL2 "https://hf-mirror.com/csukuangfj/sherpa-onnx-cmake-deps/resolve/main/microsoft.ml.onnxruntime.directml.1.14.1.nupkg")
-    set(onnxruntime_HASH "SHA256=c8ae7623385b19cd5de968d0df5383e13b97d1b3a6771c9177eac15b56013a5a")
+    # set(VERSION_ONNXRUNTIME "1.17.1")
+    # set(onnxruntime_URL  "https://globalcdn.nuget.org/packages/microsoft.ml.onnxruntime.directml.1.17.1.nupkg")
+    # set(onnxruntime_URL2 "https://hf-mirror.com/csukuangfj/sherpa-onnx-cmake-deps/resolve/main/microsoft.ml.onnxruntime.directml.1.17.1.nupkg")
+    # set(onnxruntime_HASH "SHA256=834e9f02a348be0ae0fdf0e71df59661b64072e6f89fd6da19bcf74765f6574e")
 
+    set(VERSION_ONNXRUNTIME "1.22.0")
+    set(onnxruntime_URL  "https://globalcdn.nuget.org/packages/microsoft.ml.onnxruntime.directml.1.22.0.nupkg")
+    set(onnxruntime_URL2 "https://hf-mirror.com/csukuangfj/sherpa-onnx-cmake-deps/resolve/main/microsoft.ml.onnxruntime.directml.1.22.0.nupkg")
+    set(onnxruntime_HASH "SHA256=210823f9932f81f222e2d05d04531d948a4d75dbf527dfb94195ad61371ab728")
+
+    message(STATUS "VERSION_ONNXRUNTIME: ${VERSION_ONNXRUNTIME}")
     # If you don't have access to the Internet,
     # please download onnxruntime to one of the following locations.
     # You can add more if you want.
     set(possible_file_locations
-        $ENV{HOME}/Downloads/microsoft.ml.onnxruntime.directml.1.14.1.nupkg
-        ${PROJECT_SOURCE_DIR}/microsoft.ml.onnxruntime.directml.1.14.1.nupkg
-        ${PROJECT_BINARY_DIR}/microsoft.ml.onnxruntime.directml.1.14.1.nupkg
-        /tmp/microsoft.ml.onnxruntime.directml.1.14.1.nupkg
+        $ENV{HOME}/Downloads/microsoft.ml.onnxruntime.directml.${VERSION_ONNXRUNTIME}.nupkg
+        $ENV{HOME}/Downloads/microsoft.ml.onnxruntime.directml.${VERSION_ONNXRUNTIME}.zip
+        ${PROJECT_SOURCE_DIR}/microsoft.ml.onnxruntime.directml.${VERSION_ONNXRUNTIME}.nupkg
+        ${PROJECT_BINARY_DIR}/microsoft.ml.onnxruntime.directml.${VERSION_ONNXRUNTIME}.nupkg
+        /tmp/microsoft.ml.onnxruntime.directml.${VERSION_ONNXRUNTIME}.nupkg
     )
 
     foreach(f IN LISTS possible_file_locations)
@@ -102,14 +115,15 @@ endif()
 
 # Setup DirectML
 
-set(directml_URL "https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/1.15.0")
-set(directml_HASH "SHA256=10d175f8e97447712b3680e3ac020bbb8eafdf651332b48f09ffee2eec801c23")
+set(directml_URL "https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/1.15.4")
+set(directml_HASH "SHA256=4e7cb7ddce8cf837a7a75dc029209b520ca0101470fcdf275c1f49736a3615b9")
 
 set(possible_directml_file_locations
-    $ENV{HOME}/Downloads/Microsoft.AI.DirectML.1.15.0.nupkg
-    ${PROJECT_SOURCE_DIR}/Microsoft.AI.DirectML.1.15.0.nupkg
-    ${PROJECT_BINARY_DIR}/Microsoft.AI.DirectML.1.15.0.nupkg
-    /tmp/Microsoft.AI.DirectML.1.15.0.nupkg
+    $ENV{HOME}/Downloads/Microsoft.AI.DirectML.1.15.4.nupkg
+    $ENV{HOME}/Downloads/Microsoft.AI.DirectML.1.15.4.zip
+    ${PROJECT_SOURCE_DIR}/Microsoft.AI.DirectML.1.15.4.nupkg
+    ${PROJECT_BINARY_DIR}/Microsoft.AI.DirectML.1.15.4.nupkg
+    /tmp/Microsoft.AI.DirectML.1.15.4.nupkg
 )
 
 foreach(f IN LISTS possible_directml_file_locations)

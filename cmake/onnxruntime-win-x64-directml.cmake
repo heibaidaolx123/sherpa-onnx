@@ -33,9 +33,14 @@ else()
     # set(onnxruntime_URL2 "https://hf-mirror.com/csukuangfj/sherpa-onnx-cmake-deps/resolve/main/microsoft.ml.onnxruntime.directml.1.17.1.nupkg")
     # set(onnxruntime_HASH "SHA256=834e9f02a348be0ae0fdf0e71df59661b64072e6f89fd6da19bcf74765f6574e")
 
-    set(VERSION_ONNXRUNTIME "1.22.0")
-    set(onnxruntime_URL  "https://globalcdn.nuget.org/packages/microsoft.ml.onnxruntime.directml.1.22.0.nupkg")
-    set(onnxruntime_URL2 "https://hf-mirror.com/csukuangfj/sherpa-onnx-cmake-deps/resolve/main/microsoft.ml.onnxruntime.directml.1.22.0.nupkg")
+    # set(VERSION_ONNXRUNTIME "1.22.0")
+    # set(onnxruntime_URL  "https://globalcdn.nuget.org/packages/microsoft.ml.onnxruntime.directml.1.22.0.nupkg")
+    # set(onnxruntime_URL2 "https://hf-mirror.com/csukuangfj/sherpa-onnx-cmake-deps/resolve/main/microsoft.ml.onnxruntime.directml.1.22.0.nupkg")
+    # set(onnxruntime_HASH "SHA256=29f9872d786236b79aa83f94482f3a17c14297e4833768d6d0ed4883ee732e60")
+
+    set(VERSION_ONNXRUNTIME "1.22.1")
+    set(onnxruntime_URL  "https://globalcdn.nuget.org/packages/microsoft.ml.onnxruntime.directml.1.22.1.nupkg")
+    set(onnxruntime_URL2 "https://hf-mirror.com/csukuangfj/sherpa-onnx-cmake-deps/resolve/main/microsoft.ml.onnxruntime.directml.1.22.1.nupkg")
     set(onnxruntime_HASH "SHA256=210823f9932f81f222e2d05d04531d948a4d75dbf527dfb94195ad61371ab728")
 
     message(STATUS "VERSION_ONNXRUNTIME: ${VERSION_ONNXRUNTIME}")

@@ -25,6 +25,12 @@ class OfflineWhisperGreedySearchDecoderOpt : public OfflineWhisperDecoder {
   void SetConfig(const OfflineWhisperModelConfig &config) override;
 
  private:
+  std::vector<OfflineWhisperDecoderResult> DecodeOrig(
+      Ort::Value cross_k, Ort::Value cross_v, int32_t num_feature_frames);
+
+  std::vector<OfflineWhisperDecoderResult> DecodeIOBinding(
+      Ort::Value cross_k, int32_t num_feature_frames);
+
   OfflineWhisperModelConfig config_;
   OfflineWhisperModelOpt *model_;  // not owned
 };

@@ -94,6 +94,27 @@ class OfflineRecognizerWhisperImplOpt : public OfflineRecognizerImpl {
     }
     mel = Transpose12(model_->Allocator(), &mel);
 
+    if (config_.model_config.io_binding) {
+      model_->ForwardEncoderWithBinding(std::move(mel));
+      int32_t batch_size = n;
+      std::array<int64_t, 1> fake_kv_shape{1};
+      Ort::Value fake_k =
+          Ort::Value::CreateTensor(memory_info, &batch_size, 1,
+                                   fake_kv_shape.data(), fake_kv_shape.size());
+      Ort::Value fake_v =
+          Ort::Value::CreateTensor(memory_info, &batch_size, 1,
+                                   fake_kv_shape.data(), fake_kv_shape.size());
+      auto result_vec = decoder_->Decode(
+          std::move(fake_k), std::move(fake_v),
+          *std::max_element(num_frames_vec.begin(), num_frames_vec.end()));
+      for (int i = 0; i < n; ++i) {
+        auto s = ss[i];
+        auto r = Convert(result_vec[i], symbol_table_);
+        s->SetResult(r);
+      }
+      return;
+    }
+
     try {
       auto cross_kv_batched = model_->ForwardEncoder(std::move(mel));
       auto kshape =

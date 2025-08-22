@@ -78,6 +78,12 @@ class OfflineWhisperModelOpt {
   std::vector<int32_t> DetectLanguage(Ort::Value &cross_k,   // NOLINT
                                       Ort::Value &cross_v);  // NOLINT
 
+  void ForwardEncoderWithBinding(Ort::Value features);
+
+  std::tuple<Ort::Value> ForwardDecoderWithBinding(Ort::Value tokens);
+
+  std::vector<int32_t> DetectLanguageWithBinding();
+
   /** Return the initial self kv cache in a pair
    *  - n_layer_self_k_cache A 4-D tensor of shape
    *                         (n_text_layer, N, n_audio_ctx, n_text_state).

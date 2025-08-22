@@ -14,6 +14,8 @@ struct OfflineWhisperModelConfig {
   std::string encoder;
   std::string decoder;
 
+  int32_t max_batch_size = 1;
+
   // Available languages can be found at
   // https://github.com/openai/whisper/blob/main/whisper/tokenizer.py#L10
   //

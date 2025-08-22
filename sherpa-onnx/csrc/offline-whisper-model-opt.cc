@@ -21,6 +21,10 @@
 #include "rawfile/raw_file_manager.h"
 #endif
 
+#if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
+#include "sherpa-onnx/csrc/dml-utils.h"  // NOLINT
+#endif
+
 #include "sherpa-onnx/csrc/file-utils.h"
 #include "sherpa-onnx/csrc/macros.h"
 #include "sherpa-onnx/csrc/onnx-utils.h"
@@ -36,6 +40,14 @@ class OfflineWhisperModelOpt::Impl {
         env_(ORT_LOGGING_LEVEL_ERROR),
         sess_opts_(GetSessionOptions(config)),
         allocator_{} {
+    int32_t device_id = 0;
+    if (config.io_binding) {
+#if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
+      dml_mem_manager_ = std::make_unique<DmlMemManager>();
+      dml_mem_manager_->Initialize(device_id);
+      sess_opts_ = dml_mem_manager_->CreateSessionOptions();
+#endif
+    }
     {
       // auto buf = ReadFile(config.whisper.encoder);
       // InitEncoder(buf.data(), buf.size());
@@ -46,6 +58,138 @@ class OfflineWhisperModelOpt::Impl {
       // auto buf = ReadFile(config.whisper.decoder);
       // InitDecoder(buf.data(), buf.size());
       InitDecoder(config.whisper.decoder);
+    }
+    if (config_.io_binding) {
+#if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
+      int32_t max_num_frames = 3000;
+      int32_t n_audio_ctx = max_num_frames / 2;
+      int32_t max_batch_size = config_.whisper.max_batch_size;
+      Ort::MemoryInfo dml_mem("DML", OrtDeviceAllocator, device_id,
+                              OrtMemTypeDefault);
+      std::array<int64_t, 3> feature_shape = {max_batch_size, n_mels_,
+                                              max_num_frames};
+      feature_mem_ = dml_mem_manager_->AllocateDmlMem(
+          max_batch_size * max_num_frames * n_mels_ * sizeof(float));
+      Ort::Value feature_tensor = Ort::Value::CreateTensor(
+          dml_mem, static_cast<float *>(feature_mem_.data_),
+          max_batch_size * n_mels_ * max_num_frames, feature_shape.data(),
+          feature_shape.size());
+
+      encoder_input_tensors_.push_back(std::move(feature_tensor));
+
+      std::array<int64_t, 4> cross_kv_shape = {n_text_layer_, max_batch_size,
+                                               n_audio_ctx, n_text_state_};
+      cross_k_mem_ = dml_mem_manager_->AllocateDmlMem(
+          n_text_layer_ * max_batch_size * n_audio_ctx * n_text_state_ *
+          sizeof(float));
+      cross_v_mem_ = dml_mem_manager_->AllocateDmlMem(
+          n_text_layer_ * max_batch_size * n_audio_ctx * n_text_state_ *
+          sizeof(float));
+      Ort::Value cross_k_tensor = Ort::Value::CreateTensor(
+          dml_mem, static_cast<float *>(cross_k_mem_.data_),
+          n_text_layer_ * max_batch_size * n_audio_ctx * n_text_state_,
+          cross_kv_shape.data(), cross_kv_shape.size());
+      Ort::Value cross_v_tensor = Ort::Value::CreateTensor(
+          dml_mem, static_cast<float *>(cross_v_mem_.data_),
+          n_text_layer_ * max_batch_size * n_audio_ctx * n_text_state_,
+          cross_kv_shape.data(), cross_kv_shape.size());
+
+      cross_kv_tensors_.push_back(std::move(cross_k_tensor));
+      cross_kv_tensors_.push_back(std::move(cross_v_tensor));
+
+      std::array<int64_t, 2> tokens_shape = {max_batch_size, 1};
+      tokens_mem_ =
+          dml_mem_manager_->AllocateDmlMem(max_batch_size * sizeof(int64_t));
+      Ort::Value tokens_tensor = Ort::Value::CreateTensor<int64_t>(
+          dml_mem, static_cast<int64_t *>(tokens_mem_.data_), max_batch_size,
+          tokens_shape.data(), tokens_shape.size());
+
+      std::array<int64_t, 4> self_kv_shape = {n_text_layer_, max_batch_size,
+                                              n_text_ctx_, n_text_state_};
+      self_k_mem_ = dml_mem_manager_->AllocateDmlMem(
+          n_text_layer_ * max_batch_size * n_text_ctx_ * n_text_state_ *
+          sizeof(float));
+      self_v_mem_ = dml_mem_manager_->AllocateDmlMem(
+          n_text_layer_ * max_batch_size * n_text_ctx_ * n_text_state_ *
+          sizeof(float));
+      Ort::Value self_k_tensor = Ort::Value::CreateTensor<float>(
+          dml_mem, static_cast<float *>(self_k_mem_.data_),
+          n_text_layer_ * max_batch_size * n_text_ctx_ * n_text_state_,
+          self_kv_shape.data(), self_kv_shape.size());
+      Ort::Value self_v_tensor = Ort::Value::CreateTensor<float>(
+          dml_mem, static_cast<float *>(self_v_mem_.data_),
+          n_text_layer_ * max_batch_size * n_text_ctx_ * n_text_state_,
+          self_kv_shape.data(), self_kv_shape.size());
+
+      decoder_input_tensors_partial_.push_back(std::move(tokens_tensor));
+      decoder_input_tensors_partial_.push_back(std::move(self_k_tensor));
+      decoder_input_tensors_partial_.push_back(std::move(self_v_tensor));
+
+      std::array<int64_t, 4> logits_shape{max_batch_size, 1, n_vocab_};
+      logits_mem_ = dml_mem_manager_->AllocateDmlMem(max_batch_size * n_vocab_ *
+                                                     sizeof(float));
+      Ort::Value logits_tensor = Ort::Value::CreateTensor<float>(
+          dml_mem, static_cast<float *>(logits_mem_.data_),
+          max_batch_size * n_vocab_, logits_shape.data(), logits_shape.size());
+
+      std::array<int64_t, 4> out_self_kv_shape{n_text_layer_, max_batch_size, 1,
+                                               n_text_state_};
+      out_self_k_mem_ = dml_mem_manager_->AllocateDmlMem(
+          n_text_layer_ * max_batch_size * n_text_state_ * sizeof(float));
+      out_self_v_mem_ = dml_mem_manager_->AllocateDmlMem(
+          n_text_layer_ * max_batch_size * n_text_state_ * sizeof(float));
+      Ort::Value out_self_k_tensor = Ort::Value::CreateTensor<float>(
+          dml_mem, static_cast<float *>(out_self_k_mem_.data_),
+          n_text_layer_ * max_batch_size * n_text_state_,
+          out_self_kv_shape.data(), out_self_kv_shape.size());
+      Ort::Value out_self_v_tensor = Ort::Value::CreateTensor<float>(
+          dml_mem, static_cast<float *>(out_self_v_mem_.data_),
+          n_text_layer_ * max_batch_size * n_text_state_,
+          out_self_kv_shape.data(), out_self_kv_shape.size());
+      decoder_output_tensors_.push_back(std::move(logits_tensor));
+      decoder_output_tensors_.push_back(std::move(out_self_k_tensor));
+      decoder_output_tensors_.push_back(std::move(out_self_v_tensor));
+
+      // NOTE(LX):
+      //  offset, mask, sel will be created dynamicly.
+      //  So no need to generate Ort::Value for now.
+      std::vector<int64_t> offset_buffer;
+      offset_buffer.reserve(n_text_ctx_);
+      std::vector<int32_t> attention_mask_buffer;
+      attention_mask_buffer.reserve(n_text_ctx_);
+      std::vector<bool> sel_buffer;
+      sel_buffer.reserve(n_text_ctx_ * n_text_ctx_);
+      for (int i = 0; i < n_text_ctx_; ++i) {
+        offset_buffer.push_back(i);
+        attention_mask_buffer.push_back(i + 1);
+        for (int j = 0; j < n_text_ctx_; ++j) {
+          sel_buffer.push_back(i == j);
+        }
+      }
+      offset_mem_ =
+          dml_mem_manager_->AllocateDmlMem(n_text_ctx_ * sizeof(int64_t));
+      dml_mem_manager_->CopyToGPU(offset_buffer.data(), &offset_mem_,
+                                  n_text_ctx_ * sizeof(int64_t));
+
+      attention_mask_mem_ =
+          dml_mem_manager_->AllocateDmlMem(n_text_ctx_ * sizeof(int32_t));
+      dml_mem_manager_->CopyToGPU(attention_mask_buffer.data(),
+                                  &attention_mask_mem_,
+                                  n_text_ctx_ * sizeof(int32_t));
+      sel_mem_ = dml_mem_manager_->AllocateDmlMem(n_text_ctx_ * n_text_ctx_ *
+                                                  sizeof(bool));
+      dml_mem_manager_->CopyToGPU(sel_buffer.data(), &sel_mem_,
+                                  n_text_ctx_ * n_text_ctx_ * sizeof(bool));
+      // Wait to complete all
+      dml_mem_manager_->WaitForGPU();
+      encoder_io_binding_ = Ort::IoBinding(*encoder_sess_);
+      encoder_io_binding_.BindInput(encoder_input_names_ptr_[0],
+                                    encoder_input_tensors_[0]);
+      encoder_io_binding_.BindOutput(encoder_output_names_ptr_[0],
+                                     cross_kv_tensors_[0]);
+      encoder_io_binding_.BindOutput(encoder_output_names_ptr_[1],
+                                     cross_kv_tensors_[1]);
+#endif
     }
   }
 
@@ -107,6 +251,30 @@ class OfflineWhisperModelOpt::Impl {
     return {std::move(encoder_out[0]), std::move(encoder_out[1])};
   }
 
+  void ForwardEncoderWithBinding(Ort::Value features) {
+#if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
+    if (config_.io_binding) {
+      dml_mem_manager_->CopyToGPU(features.GetTensorData<float>(),
+                                  &encoder_input_mem_,
+                                  features.GetTensorSizeInBytes());
+      dml_mem_manager_->WaitForGPU();
+      dml_mem_manager_->FlushCommandLists();
+      Ort::RunOptions ro;
+      encoder_sess_->Run(ro, encoder_io_binding_);
+      encoder_io_binding_.SynchronizeOutputs();
+      dml_mem_manager_->WaitForGPU();
+      step_ = 0;
+    } else {
+#endif
+      printf(
+          "Error: ForwardEncoderWithBinding must run with DML and IO-Binding");
+      throw std::runtime_error(
+          "ForwardEncoderWithBinding must run with DML and IO-Binding");
+#if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
+    }
+#endif
+  }
+
   std::tuple<Ort::Value, Ort::Value, Ort::Value> ForwardDecoder(
       Ort::Value tokens, Ort::Value n_layer_self_k_cache,
       Ort::Value n_layer_self_v_cache, Ort::Value n_layer_cross_k,
@@ -129,6 +297,115 @@ class OfflineWhisperModelOpt::Impl {
     return std::tuple<Ort::Value, Ort::Value, Ort::Value>{
         std::move(decoder_out[0]), std::move(decoder_out[1]),
         std::move(decoder_out[2])};
+  }
+
+  std::tuple<Ort::Value> ForwardDecoderWithBinding(Ort::Value tokens) {
+#if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
+    if (config_.io_binding) {
+      auto tokens_shape = tokens.GetTensorTypeAndShapeInfo().GetShape();
+      int batch_size = tokens_shape[0];
+      if (batch_size != config_.whisper.max_batch_size) {
+        throw std::runtime_error("Invalid batch size");
+      }
+
+      dml_mem_manager->CopyToGPU(tokens.GetTensorData<int64_t>(), &tokens_mem_,
+                                 tokens.GetTensorSizeInBytes());
+      dml_mem_manager_->WaitForGPU();
+      dml_mem_manager_->FlushCommandLists();
+
+      Ort::IoBinding decoder_io_binding(*decoder_sess_);
+      Ort::MemoryInfo dml_mem("DML", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+      // token and self kv cache
+      decoder_io_binding.BindInput(decoder_input_names_ptr_[0],
+                                   decoder_input_tensors_partial_[0]);
+      decoder_io_binding.BindOutput(decoder_input_names_ptr_[1],
+                                    decoder_input_tensors_partial_[1]);
+      decoder_io_binding.BindOutput(decoder_input_names_ptr_[2],
+                                    decoder_input_tensors_partial_[2]);
+      // cross kv cache
+      decoder_io_binding.BindOutput(decoder_input_names_ptr_[3],
+                                    cross_kv_tensors_[0]);
+      decoder_io_binding.BindOutput(decoder_input_names_ptr_[4],
+                                    cross_kv_tensors_[1]);
+
+      // offset, mask, sel
+      std::array<int64_t, 1> offset_shape{1};
+      Ort::Value offset_tensor = Ort::Value::CreateTensor<int64_t>(
+          dml_mem, static_cast<int64_t *>(offset_mem_.data_) + step_, 1,
+          offset_shape.data(), offset_shape.size());
+
+      std::array<int64_t, 1> mask_shape{1};
+      Ort::Value mask_tensor = Ort::Value::CreateTensor<int32_t>(
+          dml_mem, static_cast<int32_t *>(attention_mask_mem_.data_) + step_, 1,
+          mask_shape.data(), mask_shape.size());
+
+      std::array<int64_t, 3> sel_shape{1, n_text_ctx_, 1};
+      Ort::Value sel_tensor = Ort::Value::CreateTensor<bool>(
+          dml_mem, static_cast<bool *>(sel_mem_.data_) + step_ * n_text_ctx_,
+          n_text_ctx_, sel_shape.data(), sel_shape.size());
+
+      decoder_io_binding_.BindInput(decoder_input_names_ptr_[5], offset_tensor);
+      decoder_io_binding_.BindInput(decoder_input_names_ptr_[6], mask_tensor);
+      decoder_io_binding_.BindInput(decoder_input_names_ptr_[7], sel_tensor);
+      // logits, out_self_k, out_self_v
+      decoder_io_binding_.BindOutput(decoder_input_names_ptr_[8],
+                                     logits_tensor);
+      decoder_io_binding_.BindOutput(decoder_input_names_ptr_[9],
+                                     out_self_k_tensor);
+      decoder_io_binding_.BindOutput(decoder_input_names_ptr_[10],
+                                     out_self_v_tensor);
+      decoder_io_binding_.SynchronizeInputs();
+      Ort::RunOptions ro;
+      decoder_sess_->Run(ro, decoder_io_binding_);
+      decoder_io_binding_.SynchronizeOutputs();
+
+      // TODO(LX): copy outputs to host
+      // TODO(LX): copy out_self_kv_cache to self_kv_cache
+
+      std::array<int64_t, 2> logits_shape{batch_size, n_vocab_};
+      Ort::Value logits = Ort::Value::CreateTensor<bool>(
+          model_->Allocator(), logits_shape.data(), logits_shape.size());
+      dml_mem_manager_->CopyFromGPU(logits_mem_.data_,
+                                    logits.GetTensorMutableData<bool>(),
+                                    logits.GetTensorSizeInBytes());
+      dml_mem_manager_->WaitForGPU();
+      dml_mem_manager_->FlushCommandLists();
+      for (int32_t l = 0; l < n_text_layer_; ++l) {
+        for (int32_t b = 0; b < batch_size; ++b) {
+          DmlMem k_src = out_self_k_mem_;
+          DmlMem v_src = out_self_v_mem_;
+          DmlMem k_dst = self_k_mem_;
+          DmlMem v_dst = self_v_mem_;
+          k_src.data_ = static_cast<float *>(out_self_k_mem_.data_) +
+                        (l * batch_size + b) * n_text_state_;
+          k_dst.data_ =
+              static_cast<float *>(self_k_mem_.data_) +
+              ((l * batch_size + b) * n_text_ctx_ + i) * n_text_state_;
+          v_src.data_ = static_cast<float *>(out_self_v_mem_.data_) +
+                        (l * batch_size + b) * n_text_state_;
+          v_dst.data_ =
+              static_cast<float *>(self_v_mem_.data_) +
+              ((l * batch_size + b) * n_text_ctx_ + i) * n_text_state_;
+          dml_mem_manager_->CopyFromGPUToGPU(&k_src, &k_dst,
+                                             n_text_state_ * sizeof(float));
+          dml_mem_manager_->CopyFromGPUToGPU(&v_src, &v_dst,
+                                             n_text_state_ * sizeof(float));
+        }
+      }
+      dml_mem_manager_->WaitForGPU();
+      dml_mem_manager_->FlushCommandLists();
+      step_ += 1;
+      return std::tuple<Ort::Value>{std::move(logits)};
+    } else {
+#endif
+      printf(
+          "Error: ForwardDecoderWithBinding must run with DML and IO-Binding");
+      throw std::runtime_error(
+          "ForwardDecoderWithBinding must run with DML and IO-Binding");
+#if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
+    }
+#endif
   }
 
   std::vector<int32_t> DetectLanguage(Ort::Value &cross_k,    // NOLINT
@@ -392,6 +669,31 @@ class OfflineWhisperModelOpt::Impl {
   }
 
  private:
+#if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
+  std::unique_ptr<DmlMemManager> dml_mem_manager_ = nullptr;
+  // encoder input
+  DmlMem feature_mem_;
+  // encoder output
+  DmlMem cross_k_mem_;
+  DmlMem cross_v_mem_;
+  // decoder output + two caches above
+  DmlMem tokens_mem_;
+  DmlMem self_k_mem_;
+  DmlMem self_v_mem_;
+  DmlMem offset_mem_;
+  DmlMem attention_mask_mem_;
+  DmlMem sel_mem_;
+  // decoder output
+  DmlMem logits_mem_;
+  DmlMem out_self_k_mem_;
+  DmlMem out_self_v_mem_;
+  std::vector<Ort::Value> encoder_input_tensors_;
+  std::vector<Ort::Value> cross_kv_tensors_;
+  std::vector<Ort::Value> decoder_input_tensors_partial_;
+  std::vector<Ort::Value> decoder_output_tensors_;
+  Ort::IoBinding encoder_io_binding_;
+  int32_t step_ = 0;
+#endif
   OfflineModelConfig config_;
   SpokenLanguageIdentificationConfig lid_config_;
   Ort::Env env_;

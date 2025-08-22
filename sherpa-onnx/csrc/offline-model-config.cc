@@ -57,6 +57,10 @@ void OfflineModelConfig::Register(ParseOptions *po) {
                "the log probability, you can get it from the directory where "
                "your bpe model is generated. Only used when hotwords provided "
                "and the modeling unit is bpe or cjkchar+bpe");
+  po->Register(
+      "io-binding", &io_binding,
+      "Enable IO binding for the provider. Default is false. "
+      "If true, it will use IO binding for the provider if supported.");
 }
 
 bool OfflineModelConfig::Validate() const {

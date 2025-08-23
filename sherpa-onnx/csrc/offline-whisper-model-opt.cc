@@ -176,6 +176,7 @@ class OfflineWhisperModelOpt::Impl {
       dml_mem_manager_->CopyToGPU(attention_mask_buffer.data(),
                                   &attention_mask_mem_,
                                   n_text_ctx_ * sizeof(int32_t));
+
       sel_mem_ = dml_mem_manager_->AllocateDmlMem(n_text_ctx_ * n_text_ctx_ *
                                                   sizeof(bool));
       dml_mem_manager_->CopyToGPU(sel_buffer, &sel_mem_,
@@ -247,6 +248,7 @@ class OfflineWhisperModelOpt::Impl {
 
   ~Impl() {
     if (config_.io_binding) {
+#if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
       if (dml_mem_manager_) {
         dml_mem_manager_->FreeDmlMem(feature_mem_);
         dml_mem_manager_->FreeDmlMem(cross_k_mem_);
@@ -261,6 +263,7 @@ class OfflineWhisperModelOpt::Impl {
         dml_mem_manager_->FreeDmlMem(attention_mask_mem_);
         dml_mem_manager_->FreeDmlMem(sel_mem_);
       }
+#endif
     }
   }
 
@@ -295,7 +298,7 @@ class OfflineWhisperModelOpt::Impl {
       step_ = 0;
     } else {
 #endif
-      printf(
+      SHERPA_ONNX_LOGE(
           "Error: ForwardEncoderWithBinding must run with DML and IO-Binding");
       throw std::runtime_error(
           "ForwardEncoderWithBinding must run with DML and IO-Binding");
@@ -337,19 +340,15 @@ class OfflineWhisperModelOpt::Impl {
     int batch_size = tokens_shape[0];
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
     if (config_.io_binding) {
-      auto tokens_shape = tokens.GetTensorTypeAndShapeInfo().GetShape();
-      int batch_size = tokens_shape[0];
-      if (batch_size != config_.whisper.max_batch_size) {
-        throw std::runtime_error("Invalid batch size");
-      }
-
+      int32_t device_id = 0;
       dml_mem_manager_->CopyToGPU(tokens.GetTensorData<int64_t>(), &tokens_mem_,
                                   batch_size * sizeof(int64_t));
       dml_mem_manager_->WaitForGPU();
       dml_mem_manager_->FlushCommandLists();
 
       Ort::IoBinding decoder_io_binding(*decoder_sess_);
-      Ort::MemoryInfo dml_mem("DML", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+      Ort::MemoryInfo dml_mem("DML", OrtDeviceAllocator, device_id,
+                              OrtMemTypeDefault);
 
       // token and self kv cache
       decoder_io_binding.BindInput(decoder_input_names_ptr_[0],
@@ -384,11 +383,11 @@ class OfflineWhisperModelOpt::Impl {
       decoder_io_binding.BindInput(decoder_input_names_ptr_[6], mask_tensor);
       decoder_io_binding.BindInput(decoder_input_names_ptr_[7], sel_tensor);
       // logits, out_self_k, out_self_v
-      decoder_io_binding.BindOutput(decoder_input_names_ptr_[8],
+      decoder_io_binding.BindOutput(decoder_output_names_ptr_[0],
                                     decoder_output_tensors_[0]);
-      decoder_io_binding.BindOutput(decoder_input_names_ptr_[9],
+      decoder_io_binding.BindOutput(decoder_output_names_ptr_[1],
                                     decoder_output_tensors_[1]);
-      decoder_io_binding.BindOutput(decoder_input_names_ptr_[10],
+      decoder_io_binding.BindOutput(decoder_output_names_ptr_[2],
                                     decoder_output_tensors_[2]);
       decoder_io_binding.SynchronizeInputs();
       Ort::RunOptions ro;
@@ -435,7 +434,7 @@ class OfflineWhisperModelOpt::Impl {
       return std::tuple<Ort::Value>{std::move(logits)};
     } else {
 #endif
-      printf(
+      SHERPA_ONNX_LOGE(
           "Error: ForwardDecoderWithBinding must run with DML and IO-Binding");
       throw std::runtime_error(
           "ForwardDecoderWithBinding must run with DML and IO-Binding");
@@ -510,43 +509,50 @@ class OfflineWhisperModelOpt::Impl {
   }
 
   std::vector<int32_t> DetectLanguageWithBinding() {
-    if (!config_.io_binding) {
+#if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
+    if (config_.io_binding) {
+      int32_t batch_size = config_.whisper.max_batch_size;
+      std::vector<int64_t> token_val(batch_size, SOT());
+      std::array<int64_t, 2> token_shape{batch_size, 1};
+      Ort::MemoryInfo memory_info =
+          Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+      Ort::Value tokens = Ort::Value::CreateTensor<int64_t>(
+          memory_info, token_val.data(), token_val.size(), token_shape.data(),
+          token_shape.size());
+
+      auto decoder_out = ForwardDecoderWithBinding(std::move(tokens));
+      const float *p_logits = std::get<0>(decoder_out).GetTensorData<float>();
+
+      const int32_t vocab_size = n_vocab_;
+      const auto &all_language_ids = GetAllLanguageIDs();
+
+      std::vector<int32_t> result(batch_size, all_language_ids[0]);
+
+      for (int32_t i = 0; i < batch_size; ++i) {
+        int32_t lang_id = all_language_ids[0];
+        const float *p_logits_batch = p_logits + i * vocab_size;
+        float this_logit = p_logits_batch[lang_id];
+        for (int32_t j = 1; j != all_language_ids.size(); ++j) {
+          int32_t id = all_language_ids[j];
+          float p = p_logits_batch[id];
+          if (p > this_logit) {
+            this_logit = p;
+            lang_id = id;
+          }
+        }
+        result[i] = lang_id;
+      }
+      step_ = 0;  // reset step for decoding
+      return result;
+    } else {
+#endif
+      SHERPA_ONNX_LOGE(
+          "Error: DetectLanguageWithBinding must run with IO-Binding");
       throw std::runtime_error(
           "DetectLanguageWithBinding must run with IO-Binding");
+#if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
     }
-    int32_t batch_size = config_.whisper.max_batch_size;
-    std::vector<int64_t> token_val(batch_size, SOT());
-    std::array<int64_t, 2> token_shape{batch_size, 1};
-    Ort::MemoryInfo memory_info =
-        Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-    Ort::Value tokens = Ort::Value::CreateTensor<int64_t>(
-        memory_info, token_val.data(), token_val.size(), token_shape.data(),
-        token_shape.size());
-
-    auto decoder_out = ForwardDecoderWithBinding(std::move(tokens));
-    const float *p_logits = std::get<0>(decoder_out).GetTensorData<float>();
-
-    const int32_t vocab_size = n_vocab_;
-    const auto &all_language_ids = GetAllLanguageIDs();
-
-    std::vector<int32_t> result(batch_size, all_language_ids[0]);
-
-    for (int32_t i = 0; i < batch_size; ++i) {
-      int32_t lang_id = all_language_ids[0];
-      const float *p_logits_batch = p_logits + i * vocab_size;
-      float this_logit = p_logits_batch[lang_id];
-      for (int32_t j = 1; j != all_language_ids.size(); ++j) {
-        int32_t id = all_language_ids[j];
-        float p = p_logits_batch[id];
-        if (p > this_logit) {
-          this_logit = p;
-          lang_id = id;
-        }
-      }
-      result[i] = lang_id;
-    }
-    step_ = 0;  // reset step for decoding
-    return result;
+#endif
   }
 
   std::pair<Ort::Value, Ort::Value> GetInitialSelfKVCache(

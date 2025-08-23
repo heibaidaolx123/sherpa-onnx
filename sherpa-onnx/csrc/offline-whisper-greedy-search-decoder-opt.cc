@@ -70,7 +70,7 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeIOBinding(
   initial_tokens.push_back(model_->NoTimeStampsToken());
 
   std::vector<int64_t> token_buffer(batch_size);
-  std::array<int64_t, 2> token_shape{batch_size, static_cast<int64_t>(1)};
+  std::array<int64_t, 2> token_shape{batch_size, 1};
   std::vector<int32_t> predicted_tokens_one_step(batch_size);
 
   for (int32_t i = 0; i < initial_tokens.size(); i++) {

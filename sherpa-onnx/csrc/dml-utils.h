@@ -30,6 +30,13 @@ class DmlMemManager {
   ~DmlMemManager() {}
 
   void Initialize(int adapter_index = 0) {
+    // #ifdef _DEBUG
+    // ComPtr<ID3D12Debug> debugController;
+    // if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
+    //   debugController->EnableDebugLayer();
+    //   printf("D3D12 debug layer enabled\n");
+    // }
+    // #endif
     ComPtr<IDXGIFactory6> factory;
     HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));
     if (FAILED(hr)) {
@@ -115,7 +122,8 @@ class DmlMemManager {
     mem.d2d_res_ = nullptr;
   }
 
-  void CopyToGPU(const void *cpu_data, DmlMem *mem, size_t bytes) {
+  void CopyToGPU(const void *cpu_data, DmlMem *mem, size_t bytes,
+                 const size_t &offset = 0) {
     void *gpu_alloc = mem->data_;
     ComPtr<ID3D12Resource> gpu_resource = mem->d2d_res_;
     // Check device removed status first
@@ -187,8 +195,9 @@ class DmlMemManager {
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     cmd_list->ResourceBarrier(1, &barrier);
 
-    cmd_list->CopyBufferRegion(gpu_resource.Get(), 0, upload_buffer.Get(), 0,
-                               bytes);
+    // ʹ�ü������ƫ�������п���
+    cmd_list->CopyBufferRegion(gpu_resource.Get(), offset, upload_buffer.Get(),
+                               0, bytes);
 
     // Transition back to UAV state
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
@@ -235,9 +244,11 @@ class DmlMemManager {
     CloseHandle(event);
   }
 
-  void CopyFromGPU(DmlMem *mem, void *cpu_data, size_t bytes) {
+  void CopyFromGPU(DmlMem *mem, void *cpu_data, size_t bytes,
+                   const size_t &offset = 0) {
     void *gpu_alloc = mem->data_;
     ComPtr<ID3D12Resource> gpu_resource = mem->d2d_res_;
+
     // Check device removed status first
     HRESULT hr = d3d_device_->GetDeviceRemovedReason();
     if (FAILED(hr)) {
@@ -292,8 +303,9 @@ class DmlMemManager {
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     cmd_list->ResourceBarrier(1, &barrier);
 
-    cmd_list->CopyBufferRegion(readback_buffer.Get(), 0, gpu_resource.Get(), 0,
-                               bytes);
+    // ʹ�ü������ƫ�������п���
+    cmd_list->CopyBufferRegion(readback_buffer.Get(), 0, gpu_resource.Get(),
+                               offset, bytes);
 
     // Transition back to UAV state
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
@@ -320,7 +332,9 @@ class DmlMemManager {
     readback_buffer->Unmap(0, nullptr);
   }
 
-  void CopyFromGPUToGPU(DmlMem *src_mem, DmlMem *dst_mem, size_t bytes) {
+  void CopyFromGPUToGPU(DmlMem *src_mem, DmlMem *dst_mem, size_t bytes,
+                        const size_t &src_offset = 0,
+                        const size_t &dst_offset = 0) {
     // Check device removed status first
     HRESULT hr = d3d_device_->GetDeviceRemovedReason();
     if (FAILED(hr)) {
@@ -378,9 +392,9 @@ class DmlMemManager {
 
     cmd_list->ResourceBarrier(2, barriers);
 
-    // Perform the copy
-    cmd_list->CopyBufferRegion(dst_resource.Get(), 0, src_resource.Get(), 0,
-                               bytes);
+    
+    cmd_list->CopyBufferRegion(dst_resource.Get(), dst_offset,
+                               src_resource.Get(), src_offset, bytes);
 
     // Transition back to UAV state
     barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
@@ -516,7 +530,6 @@ class DmlMemManager {
 
     return res;
   }
-  void CreateD3D12(int adapter_index = 0) {}
 
  private:
   // D3D12 device and command queue

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -71,7 +72,7 @@ class OfflineWhisperModelOpt::Impl {
                                               max_num_frames};
       feature_mem_ = dml_mem_manager_->AllocateDmlMem(
           max_batch_size * max_num_frames * n_mels_ * sizeof(float));
-      Ort::Value feature_tensor = Ort::Value::CreateTensor(
+      Ort::Value feature_tensor = Ort::Value::CreateTensor<float>(
           dml_mem, static_cast<float *>(feature_mem_.data_),
           max_batch_size * n_mels_ * max_num_frames, feature_shape.data(),
           feature_shape.size());
@@ -86,11 +87,11 @@ class OfflineWhisperModelOpt::Impl {
       cross_v_mem_ = dml_mem_manager_->AllocateDmlMem(
           n_text_layer_ * max_batch_size * n_audio_ctx * n_text_state_ *
           sizeof(float));
-      Ort::Value cross_k_tensor = Ort::Value::CreateTensor(
+      Ort::Value cross_k_tensor = Ort::Value::CreateTensor<float>(
           dml_mem, static_cast<float *>(cross_k_mem_.data_),
           n_text_layer_ * max_batch_size * n_audio_ctx * n_text_state_,
           cross_kv_shape.data(), cross_kv_shape.size());
-      Ort::Value cross_v_tensor = Ort::Value::CreateTensor(
+      Ort::Value cross_v_tensor = Ort::Value::CreateTensor<float>(
           dml_mem, static_cast<float *>(cross_v_mem_.data_),
           n_text_layer_ * max_batch_size * n_audio_ctx * n_text_state_,
           cross_kv_shape.data(), cross_kv_shape.size());
@@ -126,7 +127,7 @@ class OfflineWhisperModelOpt::Impl {
       decoder_input_tensors_partial_.push_back(std::move(self_k_tensor));
       decoder_input_tensors_partial_.push_back(std::move(self_v_tensor));
 
-      std::array<int64_t, 4> logits_shape{max_batch_size, 1, n_vocab_};
+      std::array<int64_t, 3> logits_shape{max_batch_size, 1, n_vocab_};
       logits_mem_ = dml_mem_manager_->AllocateDmlMem(max_batch_size * n_vocab_ *
                                                      sizeof(float));
       Ort::Value logits_tensor = Ort::Value::CreateTensor<float>(
@@ -192,6 +193,7 @@ class OfflineWhisperModelOpt::Impl {
                                       cross_kv_tensors_[0]);
       encoder_io_binding_->BindOutput(encoder_output_names_ptr_[1],
                                       cross_kv_tensors_[1]);
+      decoder_io_binding_ = std::make_unique<Ort::IoBinding>(*decoder_sess_);
 #endif
     }
   }
@@ -346,58 +348,90 @@ class OfflineWhisperModelOpt::Impl {
       dml_mem_manager_->WaitForGPU();
       dml_mem_manager_->FlushCommandLists();
 
-      Ort::IoBinding decoder_io_binding(*decoder_sess_);
       Ort::MemoryInfo dml_mem("DML", OrtDeviceAllocator, device_id,
                               OrtMemTypeDefault);
 
+      decoder_io_binding_->ClearBoundInputs();
+      decoder_io_binding_->ClearBoundOutputs();
       // token and self kv cache
-      decoder_io_binding.BindInput(decoder_input_names_ptr_[0],
-                                   decoder_input_tensors_partial_[0]);
-      decoder_io_binding.BindInput(decoder_input_names_ptr_[1],
-                                   decoder_input_tensors_partial_[1]);
-      decoder_io_binding.BindInput(decoder_input_names_ptr_[2],
-                                   decoder_input_tensors_partial_[2]);
+      decoder_io_binding_->BindInput(decoder_input_names_ptr_[0],
+                                     decoder_input_tensors_partial_[0]);
+      decoder_io_binding_->BindInput(decoder_input_names_ptr_[1],
+                                     decoder_input_tensors_partial_[1]);
+      decoder_io_binding_->BindInput(decoder_input_names_ptr_[2],
+                                     decoder_input_tensors_partial_[2]);
       // cross kv cache
-      decoder_io_binding.BindInput(decoder_input_names_ptr_[3],
-                                   cross_kv_tensors_[0]);
-      decoder_io_binding.BindInput(decoder_input_names_ptr_[4],
-                                   cross_kv_tensors_[1]);
+      decoder_io_binding_->BindInput(decoder_input_names_ptr_[3],
+                                     cross_kv_tensors_[0]);
+      decoder_io_binding_->BindInput(decoder_input_names_ptr_[4],
+                                     cross_kv_tensors_[1]);
 
       // offset, mask, sel
       std::array<int64_t, 1> offset_shape{1};
+      DmlMem temp_offset_mem =
+          dml_mem_manager_->AllocateDmlMem(sizeof(int64_t));
+      int64_t offset_value = step_;
+      dml_mem_manager_->CopyToGPU(&offset_value, &temp_offset_mem,
+                                  sizeof(int64_t));
       Ort::Value offset_tensor = Ort::Value::CreateTensor<int64_t>(
-          dml_mem, static_cast<int64_t *>(offset_mem_.data_) + step_, 1,
+          dml_mem, static_cast<int64_t *>(temp_offset_mem.data_), 1,
           offset_shape.data(), offset_shape.size());
 
       std::array<int64_t, 1> mask_shape{1};
+      DmlMem temp_mask_mem = dml_mem_manager_->AllocateDmlMem(sizeof(int32_t));
+      int32_t mask_value = step_ + 1;
+      dml_mem_manager_->CopyToGPU(&mask_value, &temp_mask_mem, sizeof(int32_t));
       Ort::Value mask_tensor = Ort::Value::CreateTensor<int32_t>(
-          dml_mem, static_cast<int32_t *>(attention_mask_mem_.data_) + step_, 1,
+          dml_mem, static_cast<int32_t *>(temp_mask_mem.data_), 1,
           mask_shape.data(), mask_shape.size());
 
       std::array<int64_t, 3> sel_shape{1, n_text_ctx_, 1};
+      DmlMem temp_sel_mem =
+          dml_mem_manager_->AllocateDmlMem(n_text_ctx_ * sizeof(bool));
+      bool *sel_buffer = new bool[n_text_ctx_];
+      std::fill(sel_buffer, sel_buffer + n_text_ctx_, false);
+      sel_buffer[step_] = true;
+      dml_mem_manager_->CopyToGPU(sel_buffer, &temp_sel_mem,
+                                  n_text_ctx_ * sizeof(bool));
       Ort::Value sel_tensor = Ort::Value::CreateTensor<bool>(
-          dml_mem, static_cast<bool *>(sel_mem_.data_) + step_ * n_text_ctx_,
-          n_text_ctx_, sel_shape.data(), sel_shape.size());
+          dml_mem, static_cast<bool *>(temp_sel_mem.data_), n_text_ctx_,
+          sel_shape.data(), sel_shape.size());
+      delete[] sel_buffer;
 
-      decoder_io_binding.BindInput(decoder_input_names_ptr_[5], offset_tensor);
-      decoder_io_binding.BindInput(decoder_input_names_ptr_[6], mask_tensor);
-      decoder_io_binding.BindInput(decoder_input_names_ptr_[7], sel_tensor);
+      // 等待所有GPU拷贝操作完成
+      dml_mem_manager_->WaitForGPU();
+      dml_mem_manager_->FlushCommandLists();
+
+      decoder_io_binding_->BindInput(decoder_input_names_ptr_[5],
+                                     offset_tensor);
+      decoder_io_binding_->BindInput(decoder_input_names_ptr_[6], mask_tensor);
+      decoder_io_binding_->BindInput(decoder_input_names_ptr_[7], sel_tensor);
+
       // logits, out_self_k, out_self_v
-      decoder_io_binding.BindOutput(decoder_output_names_ptr_[0],
-                                    decoder_output_tensors_[0]);
-      decoder_io_binding.BindOutput(decoder_output_names_ptr_[1],
-                                    decoder_output_tensors_[1]);
-      decoder_io_binding.BindOutput(decoder_output_names_ptr_[2],
-                                    decoder_output_tensors_[2]);
-      decoder_io_binding.SynchronizeInputs();
+      decoder_io_binding_->BindOutput(decoder_output_names_ptr_[0],
+                                      decoder_output_tensors_[0]);
+      decoder_io_binding_->BindOutput(decoder_output_names_ptr_[1],
+                                      decoder_output_tensors_[1]);
+      decoder_io_binding_->BindOutput(decoder_output_names_ptr_[2],
+                                      decoder_output_tensors_[2]);
+
+      decoder_io_binding_->SynchronizeInputs();
+
+      dml_mem_manager_->FlushCommandLists();
+      dml_mem_manager_->WaitForGPU();
+
       Ort::RunOptions ro;
-      decoder_sess_->Run(ro, decoder_io_binding);
-      decoder_io_binding.SynchronizeOutputs();
 
-      // TODO(LX): copy outputs to host
-      // TODO(LX): copy out_self_kv_cache to self_kv_cache
+      try {
+        decoder_sess_->Run(ro, *decoder_io_binding_);
+      } catch (const std::exception &e) {
+        SHERPA_ONNX_LOGE("Error in decoder_sess_->Run: %s\n", e.what());
+        throw;
+      }
+      dml_mem_manager_->WaitForGPU();
+      decoder_io_binding_->SynchronizeOutputs();
 
-      std::array<int64_t, 2> logits_shape{batch_size, n_vocab_};
+      std::array<int64_t, 3> logits_shape{batch_size, 1, n_vocab_};
       Ort::Value logits = Ort::Value::CreateTensor<float>(
           allocator_, logits_shape.data(), logits_shape.size());
       dml_mem_manager_->CopyFromGPU(&logits_mem_,
@@ -407,29 +441,29 @@ class OfflineWhisperModelOpt::Impl {
       dml_mem_manager_->FlushCommandLists();
       for (int32_t l = 0; l < n_text_layer_; ++l) {
         for (int32_t b = 0; b < batch_size; ++b) {
-          DmlMem k_src = out_self_k_mem_;
-          DmlMem v_src = out_self_v_mem_;
-          DmlMem k_dst = self_k_mem_;
-          DmlMem v_dst = self_v_mem_;
-          k_src.data_ = static_cast<float *>(out_self_k_mem_.data_) +
-                        (l * batch_size + b) * n_text_state_;
-          k_dst.data_ =
-              static_cast<float *>(self_k_mem_.data_) +
-              ((l * batch_size + b) * n_text_ctx_ + step_) * n_text_state_;
+          size_t src_offset =
+              (l * batch_size + b) * n_text_state_ * sizeof(float);
+          size_t dst_offset = ((l * batch_size + b) * n_text_ctx_ + step_) *
+                              n_text_state_ * sizeof(float);
 
-          v_src.data_ = static_cast<float *>(out_self_v_mem_.data_) +
-                        (l * batch_size + b) * n_text_state_;
-          v_dst.data_ =
-              static_cast<float *>(self_v_mem_.data_) +
-              ((l * batch_size + b) * n_text_ctx_ + step_) * n_text_state_;
-          dml_mem_manager_->CopyFromGPUToGPU(&k_src, &k_dst,
-                                             n_text_state_ * sizeof(float));
-          dml_mem_manager_->CopyFromGPUToGPU(&v_src, &v_dst,
-                                             n_text_state_ * sizeof(float));
+          dml_mem_manager_->CopyFromGPUToGPU(&out_self_k_mem_, &self_k_mem_,
+                                             n_text_state_ * sizeof(float),
+                                             src_offset, dst_offset);
+          dml_mem_manager_->CopyFromGPUToGPU(&out_self_v_mem_, &self_v_mem_,
+                                             n_text_state_ * sizeof(float),
+                                             src_offset, dst_offset);
         }
       }
       dml_mem_manager_->WaitForGPU();
       dml_mem_manager_->FlushCommandLists();
+
+      // 清理临时内存
+      dml_mem_manager_->FreeDmlMem(temp_offset_mem);
+      dml_mem_manager_->FreeDmlMem(temp_mask_mem);
+      dml_mem_manager_->FreeDmlMem(temp_sel_mem);
+      dml_mem_manager_->WaitForGPU();
+      dml_mem_manager_->FlushCommandLists();
+
       step_ += 1;
       return std::tuple<Ort::Value>{std::move(logits)};
     } else {
@@ -454,7 +488,7 @@ class OfflineWhisperModelOpt::Impl {
     auto memory_info =
         Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
 
-    Ort::Value tokens = Ort::Value::CreateTensor(
+    Ort::Value tokens = Ort::Value::CreateTensor<int64_t>(
         memory_info, token_val.data(), token_val.size(), token_shape.data(),
         token_shape.size());
 
@@ -608,6 +642,27 @@ class OfflineWhisperModelOpt::Impl {
   int32_t Translate() const { return translate_; }
 
   bool IsMultiLingual() const { return is_multilingual_; }
+
+  void ResetStep() {
+#if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
+    if (config_.io_binding) {
+      step_ = 0;
+      // 可选：清零self KV cache
+      if (dml_mem_manager_ && self_k_mem_.data_ && self_v_mem_.data_) {
+        size_t self_kv_size = n_text_layer_ * config_.whisper.max_batch_size *
+                              n_text_ctx_ * n_text_state_ * sizeof(float);
+        // 将 self KV cache 重置为零
+        std::vector<float> zero_buffer(self_kv_size / sizeof(float), 0.0f);
+        dml_mem_manager_->CopyToGPU(zero_buffer.data(), &self_k_mem_,
+                                    self_kv_size);
+        dml_mem_manager_->CopyToGPU(zero_buffer.data(), &self_v_mem_,
+                                    self_kv_size);
+        dml_mem_manager_->WaitForGPU();
+        dml_mem_manager_->FlushCommandLists();
+      }
+    }
+#endif
+  }
 
  private:
   void InitEncoder(void *model_data, size_t model_data_length) {
@@ -774,6 +829,7 @@ class OfflineWhisperModelOpt::Impl {
   std::vector<Ort::Value> decoder_input_tensors_partial_;
   std::vector<Ort::Value> decoder_output_tensors_;
   std::unique_ptr<Ort::IoBinding> encoder_io_binding_ = nullptr;
+  std::unique_ptr<Ort::IoBinding> decoder_io_binding_ = nullptr;
   int32_t step_ = 0;
 #endif
   OfflineModelConfig config_;
@@ -923,6 +979,8 @@ int32_t OfflineWhisperModelOpt::Translate() const { return impl_->Translate(); }
 bool OfflineWhisperModelOpt::IsMultiLingual() const {
   return impl_->IsMultiLingual();
 }
+
+void OfflineWhisperModelOpt::ResetStep() { impl_->ResetStep(); }
 
 void OfflineWhisperModelOpt::NormalizeFeatures(float *features,
                                                int32_t num_frames,

@@ -84,6 +84,9 @@ class OfflineWhisperModelOpt {
 
   std::vector<int32_t> DetectLanguageWithBinding();
 
+  /** Reset the step counter for a new sequence generation */
+  void ResetStep();
+
   /** Return the initial self kv cache in a pair
    *  - n_layer_self_k_cache A 4-D tensor of shape
    *                         (n_text_layer, N, n_audio_ctx, n_text_state).

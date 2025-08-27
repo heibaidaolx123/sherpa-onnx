@@ -92,6 +92,12 @@ class OfflineRecognizerWhisperImpl : public OfflineRecognizerImpl {
       OfflineStream *s = ss[i];
       std::vector<float> f = s->GetFrames();
       int32_t num_frames = f.size() / feat_dim;
+      if (num_frames > max_num_frames) {
+        SHERPA_ONNX_LOGE(
+            "Input segment is too long (%d frames), trim to %d frames",
+            num_frames, max_num_frames);
+        num_frames = max_num_frames;
+      }
       num_frames_vec[i] = num_frames;
       model_->NormalizeFeatures(f.data(), num_frames, feat_dim);
       std::copy(f.data(), f.data() + num_frames * feat_dim,

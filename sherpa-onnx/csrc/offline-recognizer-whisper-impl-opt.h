@@ -94,7 +94,8 @@ class OfflineRecognizerWhisperImplOpt : public OfflineRecognizerImpl {
     }
     mel = Transpose12(model_->Allocator(), &mel);
 
-    if (config_.model_config.io_binding) {
+    if (config_.model_config.io_binding &&
+        config_.model_config.provider == "directml") {
       printf("Using IO binding for whisper encoder\n");
       model_->ForwardEncoderWithBinding(std::move(mel));
       printf("Using IO binding for whisper decoder\n");

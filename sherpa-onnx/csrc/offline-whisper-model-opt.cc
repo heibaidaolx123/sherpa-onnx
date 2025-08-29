@@ -45,9 +45,16 @@ class OfflineWhisperModelOpt::Impl {
     int32_t device_id = 0;
     if (config.io_binding) {
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
-      dml_mem_manager_ = std::make_unique<DmlMemManager>();
-      dml_mem_manager_->Initialize(device_id);
-      sess_opts_ = dml_mem_manager_->CreateSessionOptions();
+      if (config_.provider == "directml") {
+        dml_mem_manager_ = std::make_unique<DmlMemManager>();
+        dml_mem_manager_->Initialize(device_id);
+        sess_opts_ = dml_mem_manager_->CreateSessionOptions();
+      } else {
+        SHERPA_ONNX_LOGE(
+            "Only directml is supported when io_binding is true. Given %s. "
+            "Will not use IO binding.",
+            config_.provider.c_str());
+      }
 #endif
     }
     {
@@ -61,8 +68,8 @@ class OfflineWhisperModelOpt::Impl {
       // InitDecoder(buf.data(), buf.size());
       InitDecoder(config.whisper.decoder);
     }
-    if (config_.io_binding) {
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
+    if (dml_mem_manager_) {
       int32_t max_num_frames = 3000;
       int32_t n_audio_ctx = max_num_frames / 2;
       int32_t max_batch_size = config_.whisper.max_batch_size;
@@ -206,8 +213,8 @@ class OfflineWhisperModelOpt::Impl {
       decoder_io_binding_ = std::make_unique<Ort::IoBinding>(*decoder_sess_);
 
       ResetStep();
-#endif
     }
+#endif
   }
 
   explicit Impl(const SpokenLanguageIdentificationConfig &config)
@@ -261,25 +268,23 @@ class OfflineWhisperModelOpt::Impl {
   }
 
   ~Impl() {
-    if (config_.io_binding) {
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
-      if (dml_mem_manager_) {
-        dml_mem_manager_->FreeDmlMem(feature_mem_);
-        dml_mem_manager_->FreeDmlMem(cross_k_mem_);
-        dml_mem_manager_->FreeDmlMem(cross_v_mem_);
-        dml_mem_manager_->FreeDmlMem(tokens_mem_);
-        dml_mem_manager_->FreeDmlMem(self_k_mem_);
-        dml_mem_manager_->FreeDmlMem(self_v_mem_);
-        dml_mem_manager_->FreeDmlMem(logits_mem_);
-        dml_mem_manager_->FreeDmlMem(out_self_k_mem_);
-        dml_mem_manager_->FreeDmlMem(out_self_v_mem_);
-        dml_mem_manager_->FreeDmlMem(offset_mem_);
-        dml_mem_manager_->FreeDmlMem(attention_mask_mem_);
-        dml_mem_manager_->FreeDmlMem(sel_mem_);
-        delete[] sel_init_buffer_;
-      }
-#endif
+    if (dml_mem_manager_) {
+      dml_mem_manager_->FreeDmlMem(feature_mem_);
+      dml_mem_manager_->FreeDmlMem(cross_k_mem_);
+      dml_mem_manager_->FreeDmlMem(cross_v_mem_);
+      dml_mem_manager_->FreeDmlMem(tokens_mem_);
+      dml_mem_manager_->FreeDmlMem(self_k_mem_);
+      dml_mem_manager_->FreeDmlMem(self_v_mem_);
+      dml_mem_manager_->FreeDmlMem(logits_mem_);
+      dml_mem_manager_->FreeDmlMem(out_self_k_mem_);
+      dml_mem_manager_->FreeDmlMem(out_self_v_mem_);
+      dml_mem_manager_->FreeDmlMem(offset_mem_);
+      dml_mem_manager_->FreeDmlMem(attention_mask_mem_);
+      dml_mem_manager_->FreeDmlMem(sel_mem_);
+      delete[] sel_init_buffer_;
     }
+#endif
   }
 
   std::pair<Ort::Value, Ort::Value> ForwardEncoder(Ort::Value features) {
@@ -300,7 +305,7 @@ class OfflineWhisperModelOpt::Impl {
     }
     int batch_size = features_shape[0];
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
-    if (config_.io_binding) {
+    if (dml_mem_manager_) {
       dml_mem_manager_->CopyToGPU(
           features.GetTensorData<float>(), &feature_mem_,
           batch_size * n_mels_ * num_frames * sizeof(float));
@@ -314,7 +319,8 @@ class OfflineWhisperModelOpt::Impl {
     } else {
 #endif
       SHERPA_ONNX_LOGE(
-          "Error: ForwardEncoderWithBinding must run with DML and IO-Binding");
+          "Error: ForwardEncoderWithBinding must run with DML and IO-Binding. "
+          "Please compile with DML support.");
       throw std::runtime_error(
           "ForwardEncoderWithBinding must run with DML and IO-Binding");
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
@@ -358,7 +364,7 @@ class OfflineWhisperModelOpt::Impl {
     }
     int batch_size = tokens_shape[0];
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
-    if (config_.io_binding) {
+    if (dml_mem_manager_) {
       int32_t device_id = 0;
       dml_mem_manager_->CopyToGPU(tokens.GetTensorData<int64_t>(), &tokens_mem_,
                                   batch_size * sizeof(int64_t));
@@ -561,7 +567,7 @@ class OfflineWhisperModelOpt::Impl {
 
   std::vector<int32_t> DetectLanguageWithBinding() {
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
-    if (config_.io_binding) {
+    if (dml_mem_manager_) {
       int32_t batch_size = config_.whisper.max_batch_size;
       std::vector<int64_t> token_val(batch_size, SOT());
       std::array<int64_t, 2> token_shape{batch_size, 1};
@@ -661,14 +667,6 @@ class OfflineWhisperModelOpt::Impl {
   bool IsMultiLingual() const { return is_multilingual_; }
 
   void ResetStep() {
-    // std::vector<int64_t> tokens_init_buffer_;
-    // std::vector<float> self_kv_init_buffer_;
-    // std::vector<float> attention_mask_init_buffer_;
-    // bool *sel_init_buffer_;
-
-    // DmlMem offset_mem_;
-    // DmlMem attention_mask_mem_;
-    // DmlMem sel_mem_;
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
     if (dml_mem_manager_) {
       step_ = 0;

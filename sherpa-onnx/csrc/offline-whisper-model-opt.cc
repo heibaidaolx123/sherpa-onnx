@@ -66,6 +66,25 @@ class OfflineWhisperModelOpt::Impl {
       int32_t max_num_frames = 3000;
       int32_t n_audio_ctx = max_num_frames / 2;
       int32_t max_batch_size = config_.whisper.max_batch_size;
+
+      tokens_init_buffer_.resize(max_batch_size);
+      std::fill(tokens_init_buffer_.begin(), tokens_init_buffer_.end(),
+                static_cast<int64_t>(sot_));
+      self_kv_init_buffer_.resize(n_text_layer_ * max_batch_size * n_text_ctx_ *
+                                  n_text_state_);
+      std::memset(self_kv_init_buffer_.data(), 0,
+                  self_kv_init_buffer_.size() * sizeof(float));
+      attention_mask_init_buffer_.resize(max_batch_size * n_text_ctx_);
+      std::fill(attention_mask_init_buffer_.begin(),
+                attention_mask_init_buffer_.end(), -1e9f);
+      sel_init_buffer_ = new bool[max_batch_size * n_text_ctx_];
+      std::fill(sel_init_buffer_,
+                sel_init_buffer_ + max_batch_size * n_text_ctx_, false);
+      for (int b = 0; b < max_batch_size; ++b) {
+        attention_mask_init_buffer_[b * n_text_ctx_] = 0.0f;
+        sel_init_buffer_[b * n_text_ctx_] = true;
+      }
+
       Ort::MemoryInfo dml_mem("DML", OrtDeviceAllocator, device_id,
                               OrtMemTypeDefault);
       std::array<int64_t, 3> feature_shape = {max_batch_size, n_mels_,
@@ -152,25 +171,16 @@ class OfflineWhisperModelOpt::Impl {
       decoder_output_tensors_.push_back(std::move(out_self_k_tensor));
       decoder_output_tensors_.push_back(std::move(out_self_v_tensor));
 
-      // NOTE(LX):
-      //  offset, mask, sel will be created dynamicly.
-      //  So no need to generate Ort::Value for now.
-      std::vector<int64_t> offset_buffer;
-      offset_buffer.reserve(n_text_ctx_);
-      std::vector<int32_t> attention_mask_buffer;
-      attention_mask_buffer.reserve(n_text_ctx_);
-      bool *sel_buffer = new bool[n_text_ctx_ * n_text_ctx_];
-      for (int i = 0; i < n_text_ctx_; ++i) {
-        offset_buffer.push_back(i);
-        attention_mask_buffer.push_back(i + 1);
-        for (int j = 0; j < n_text_ctx_; ++j) {
-          sel_buffer[i * n_text_ctx_ + j] = i == j;
-        }
+      std::vector<float> attention_mask_buffer(max_batch_size * n_text_ctx_,
+                                               -1e9);
+      bool *sel_buffer = new bool[max_batch_size * n_text_ctx_];
+      for (int b = 0; b < max_batch_size : ++b) {
+        attention_mask_buffer[b * n_text_ctx_] = 0;
       }
-      offset_mem_ =
-          dml_mem_manager_->AllocateDmlMem(n_text_ctx_ * sizeof(int64_t));
-      dml_mem_manager_->CopyToGPU(offset_buffer.data(), &offset_mem_,
-                                  n_text_ctx_ * sizeof(int64_t));
+
+      int64_t offset_init = 0;
+      offset_mem_ = dml_mem_manager_->AllocateDmlMem(sizeof(int64_t));
+      dml_mem_manager_->CopyToGPU(&offset_init, &offset_mem_, sizeof(int64_t));
 
       attention_mask_mem_ =
           dml_mem_manager_->AllocateDmlMem(n_text_ctx_ * sizeof(int32_t));
@@ -194,6 +204,8 @@ class OfflineWhisperModelOpt::Impl {
       encoder_io_binding_->BindOutput(encoder_output_names_ptr_[1],
                                       cross_kv_tensors_[1]);
       decoder_io_binding_ = std::make_unique<Ort::IoBinding>(*decoder_sess_);
+
+      ResetStep();
 #endif
     }
   }
@@ -264,6 +276,7 @@ class OfflineWhisperModelOpt::Impl {
         dml_mem_manager_->FreeDmlMem(offset_mem_);
         dml_mem_manager_->FreeDmlMem(attention_mask_mem_);
         dml_mem_manager_->FreeDmlMem(sel_mem_);
+        delete[] sel_init_buffer_;
       }
 #endif
     }
@@ -309,11 +322,12 @@ class OfflineWhisperModelOpt::Impl {
 #endif
   }
 
-  std::tuple<Ort::Value, Ort::Value, Ort::Value> ForwardDecoder(
-      Ort::Value tokens, Ort::Value n_layer_self_k_cache,
-      Ort::Value n_layer_self_v_cache, Ort::Value n_layer_cross_k,
-      Ort::Value n_layer_cross_v, Ort::Value offset, Ort::Value attention_mask,
-      Ort::Value sel) {
+  std::tuple<Ort::Value, Ort::Value, Ort::Value, Ort::Value, Ort::Value,
+             Ort::Value, Ort::Value>
+  ForwardDecoder(Ort::Value tokens, Ort::Value n_layer_self_k_cache,
+                 Ort::Value n_layer_self_v_cache, Ort::Value n_layer_cross_k,
+                 Ort::Value n_layer_cross_v, Ort::Value offset,
+                 Ort::Value attention_mask, Ort::Value sel) {
     std::array<Ort::Value, 8> decoder_input = {std::move(tokens),
                                                std::move(n_layer_self_k_cache),
                                                std::move(n_layer_self_v_cache),
@@ -328,9 +342,12 @@ class OfflineWhisperModelOpt::Impl {
         decoder_input.size(), decoder_output_names_ptr_.data(),
         decoder_output_names_ptr_.size());
 
-    return std::tuple<Ort::Value, Ort::Value, Ort::Value>{
+    return std::tuple<Ort::Value, Ort::Value, Ort::Value, Ort::Value,
+                      Ort::Value, Ort::Value, Ort::Value>{
         std::move(decoder_out[0]), std::move(decoder_out[1]),
-        std::move(decoder_out[2])};
+        std::move(decoder_out[2]), std::move(decoder_out[3]),
+        std::move(decoder_out[4]), std::move(decoder_out[5]),
+        std::move(decoder_out[6])};
   }
 
   std::tuple<Ort::Value> ForwardDecoderWithBinding(Ort::Value tokens) {
@@ -644,22 +661,34 @@ class OfflineWhisperModelOpt::Impl {
   bool IsMultiLingual() const { return is_multilingual_; }
 
   void ResetStep() {
+    // std::vector<int64_t> tokens_init_buffer_;
+    // std::vector<float> self_kv_init_buffer_;
+    // std::vector<float> attention_mask_init_buffer_;
+    // bool *sel_init_buffer_;
+
+    // DmlMem offset_mem_;
+    // DmlMem attention_mask_mem_;
+    // DmlMem sel_mem_;
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
-    if (config_.io_binding) {
+    if (dml_mem_manager_) {
       step_ = 0;
-      // 可选：清零self KV cache
-      if (dml_mem_manager_ && self_k_mem_.data_ && self_v_mem_.data_) {
-        size_t self_kv_size = n_text_layer_ * config_.whisper.max_batch_size *
-                              n_text_ctx_ * n_text_state_ * sizeof(float);
-        // 将 self KV cache 重置为零
-        std::vector<float> zero_buffer(self_kv_size / sizeof(float), 0.0f);
-        dml_mem_manager_->CopyToGPU(zero_buffer.data(), &self_k_mem_,
-                                    self_kv_size);
-        dml_mem_manager_->CopyToGPU(zero_buffer.data(), &self_v_mem_,
-                                    self_kv_size);
-        dml_mem_manager_->WaitForGPU();
-        dml_mem_manager_->FlushCommandLists();
-      }
+      int64_t zero = 0;
+      dml_mem_manager_->CopyToGPU(tokens_init_buffer_.data(), &tokens_mem_,
+                                  tokens_init_buffer_.size() * sizeof(int64_t));
+      dml_mem_manager_->CopyToGPU(self_kv_init_buffer_.data(), &self_k_mem_,
+                                  self_kv_init_buffer_.size() * sizeof(float));
+      dml_mem_manager_->CopyToGPU(self_kv_init_buffer_.data(), &self_v_mem_,
+                                  self_kv_init_buffer_.size() * sizeof(float));
+      dml_mem_manager_->CopyToGPU(&zero, &offset_mem_, sizeof(int64_t));
+      dml_mem_manager_->CopyToGPU(
+          attention_mask_init_buffer_.data(), &attention_mask_mem_,
+          attention_mask_init_buffer_.size() * sizeof(float));
+      dml_mem_manager_->CopyToGPU(
+          sel_init_buffer_, &sel_mem_,
+          config_.whisper.max_batch_size * n_text_ctx_ * sizeof(bool));
+
+      dml_mem_manager_->WaitForGPU();
+      dml_mem_manager_->FlushCommandLists();
     }
 #endif
   }
@@ -808,6 +837,10 @@ class OfflineWhisperModelOpt::Impl {
  private:
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
   std::unique_ptr<DmlMemManager> dml_mem_manager_ = nullptr;
+  std::vector<int64_t> tokens_init_buffer_;
+  std::vector<float> self_kv_init_buffer_;
+  std::vector<float> attention_mask_init_buffer_;
+  bool *sel_init_buffer_;
   // encoder input
   DmlMem feature_mem_;
   // encoder output
@@ -899,7 +932,8 @@ std::pair<Ort::Value, Ort::Value> OfflineWhisperModelOpt::ForwardEncoder(
   return impl_->ForwardEncoder(std::move(features));
 }
 
-std::tuple<Ort::Value, Ort::Value, Ort::Value>
+std::tuple<Ort::Value, Ort::Value, Ort::Value, Ort::Value, Ort::Value,
+           Ort::Value, Ort::Value>
 OfflineWhisperModelOpt::ForwardDecoder(
     Ort::Value tokens, Ort::Value n_layer_self_k_cache,
     Ort::Value n_layer_self_v_cache, Ort::Value n_layer_cross_k,

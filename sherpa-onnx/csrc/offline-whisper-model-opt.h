@@ -58,22 +58,27 @@ class OfflineWhisperModelOpt {
    * @param n_layer_cross_v       A 4-D tensor of shape
    *                              (n_text_layer, N, n_audio_ctx, n_text_state).
    * @param offset A int64 tensor of shape (1,)
-   * @param attention_mask A int32 tensor of (1,)
-   * @param sel A bool tensor of (1, n_text_ctx, 1)
+   * @param attention_mask A float tensor of (B, 1, 1, n_text_ctx)
+   * @param sel A bool tensor of (B, n_text_ctx, 1)
    *
-   * @return Return a tuple containing 6 tensors:
+   * @return Return a tuple containing 7 tensors:
    *
    *  - logits A 3-D tensor of shape (N, 1, vocab_size)
    *  - out_n_layer_self_k_cache A 4-D tensor of shape
-   *                              (n_text_layer, N, 1, n_text_state).
+   *                              (n_text_layer, N, n_text_ctx, n_text_state).
    *  - out_n_layer_self_v_cache A 4-D tensor of shape
-   *                              (n_text_layer, N, 1, n_text_state).
+   *                              (n_text_layer, N, n_text_ctx, n_text_state).
+   *  - token_next A 2-D tensor of shape (N, 1)
+   *  - offset_next A int64 tensor of shape (1,)
+   *  - mask_next A float tensor of shape (B, 1, 1, n_text_ctx)
+   *  - sel_next A bool tensor of shape (B, n_text_ctx, 1)
    */
-  std::tuple<Ort::Value, Ort::Value, Ort::Value> ForwardDecoder(
-      Ort::Value tokens, Ort::Value n_layer_self_k_cache,
-      Ort::Value n_layer_self_v_cache, Ort::Value n_layer_cross_k,
-      Ort::Value n_layer_cross_v, Ort::Value offset, Ort::Value attention_mask,
-      Ort::Value sel) const;
+  std::tuple<Ort::Value, Ort::Value, Ort::Value, Ort::Value, Ort::Value,
+             Ort::Value, Ort::Value>
+  ForwardDecoder(Ort::Value tokens, Ort::Value n_layer_self_k_cache,
+                 Ort::Value n_layer_self_v_cache, Ort::Value n_layer_cross_k,
+                 Ort::Value n_layer_cross_v, Ort::Value offset,
+                 Ort::Value attention_mask, Ort::Value sel) const;
 
   std::vector<int32_t> DetectLanguage(Ort::Value &cross_k,   // NOLINT
                                       Ort::Value &cross_v);  // NOLINT

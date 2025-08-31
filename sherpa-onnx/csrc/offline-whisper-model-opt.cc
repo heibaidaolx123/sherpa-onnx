@@ -69,22 +69,8 @@ class OfflineWhisperModelOpt::Impl {
       InitDecoder(config.whisper.decoder);
     }
 
-    for (auto &n : encoder_input_names_) {
-      printf("## encoder input name: %s\n", n.c_str());
-    }
-    for (auto &n : encoder_output_names_) {
-      printf("## encoder output name: %s\n", n.c_str());
-    }
-    for (auto &n : decoder_input_names_) {
-      printf("## decoder input name: %s\n", n.c_str());
-    }
-    for (auto &n : decoder_output_names_) {
-      printf("## decoder output name: %s\n", n.c_str());
-    }
-
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
     if (dml_mem_manager_) {
-      printf("## Allocating DML memory\n");
       int32_t max_num_frames = 3000;
       int32_t n_audio_ctx = max_num_frames / 2;
       int32_t max_batch_size = config_.whisper.max_batch_size;
@@ -369,12 +355,6 @@ class OfflineWhisperModelOpt::Impl {
         {}, encoder_input_names_ptr_.data(), &features, 1,
         encoder_output_names_ptr_.data(), encoder_output_names_ptr_.size());
 
-    auto p_cross_k = encoder_out[0].GetTensorData<float>();
-    printf("## CPU cross_k:\n");
-    for (int i = 0; i < 20; ++i) {
-      printf("%f ", p_cross_k[i]);
-    }
-    printf("\n");
     return {std::move(encoder_out[0]), std::move(encoder_out[1])};
   }
 
@@ -398,17 +378,6 @@ class OfflineWhisperModelOpt::Impl {
       encoder_sess_->Run(ro, *encoder_io_binding_);
       // encoder_io_binding_->SynchronizeOutputs();
       dml_mem_manager_->WaitForGPU();
-      std::vector<float> cross_k(n_text_layer_ * batch_size * (num_frames / 2) *
-                                 n_text_state_);
-      dml_mem_manager_->CopyFromGPU(&cross_k_mem_, cross_k.data(),
-                                    n_text_layer_ * batch_size *
-                                        (num_frames / 2) * n_text_state_ *
-                                        sizeof(float));
-      printf("## DML cross_k:\n");
-      for (int i = 0; i < 20; ++i) {
-        printf("%f ", cross_k[i]);
-      }
-      printf("\n");
 
       step_ = 0;
     } else {
@@ -460,8 +429,6 @@ class OfflineWhisperModelOpt::Impl {
     int batch_size = tokens_shape[0];
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
     if (dml_mem_manager_) {
-      auto p_start = tokens.GetTensorData<int64_t>();
-      printf("## tokens: %d\n", p_start[0]);
       dml_mem_manager_->CopyToGPU(tokens.GetTensorData<int64_t>(), &tokens_mem_,
                                   batch_size * sizeof(int64_t));
       dml_mem_manager_->WaitForGPU();
@@ -483,90 +450,6 @@ class OfflineWhisperModelOpt::Impl {
                                     best_tokens.GetTensorMutableData<int64_t>(),
                                     batch_size * sizeof(int64_t));
       dml_mem_manager_->WaitForGPU();
-      dml_mem_manager_->FlushCommandLists();
-
-      int64_t best_output_token = best_tokens.GetTensorData<int64_t>()[0];
-      printf("## DML best output token: %d\n",
-             static_cast<int32_t>(best_output_token));
-      std::vector<float> logits(n_vocab_ * batch_size);
-      dml_mem_manager_->CopyFromGPU(&logits_mem_, logits.data(),
-                                    n_vocab_ * batch_size * sizeof(float));
-
-      int32_t max_token_id = static_cast<int32_t>(std::distance(
-          logits.data(),
-          std::max_element(logits.data(), logits.data() + logits.size())));
-      printf("## DML logits: max token id %d\n", max_token_id);
-
-      std::vector<float> self_kv(n_text_layer_ * batch_size * n_text_ctx_ *
-                                 n_text_state_);
-      dml_mem_manager_->CopyFromGPU(&output_self_k_mem_, self_kv.data(),
-                                    n_text_layer_ * batch_size * n_text_ctx_ *
-                                        n_text_state_ * sizeof(float));
-      dml_mem_manager_->WaitForGPU();
-      dml_mem_manager_->FlushCommandLists();
-      printf("## DML self_k:\n");
-      for (int i = 0; i < 20; ++i) {
-        printf("%f ", self_kv[i + step_ * n_text_state_]);
-      }
-      printf("\n");
-      dml_mem_manager_->CopyFromGPU(&output_self_v_mem_, self_kv.data(),
-                                    n_text_layer_ * batch_size * n_text_ctx_ *
-                                        n_text_state_ * sizeof(float));
-      dml_mem_manager_->WaitForGPU();
-      dml_mem_manager_->FlushCommandLists();
-      printf("## DML self_v:\n");
-      for (int i = 0; i < 20; ++i) {
-        printf("%f ", self_kv[i + step_ * n_text_state_]);
-      }
-      printf("\n");
-
-      // std::vector<float> cross_kv(n_text_layer_ * batch_size * (3000 / 2) *
-      //                             n_text_state_);
-      // dml_mem_manager_->CopyFromGPU(&cross_k_mem_, cross_kv.data(),
-      //                               n_text_layer_ * batch_size * (3000 / 2) *
-      //                                   n_text_state_ * sizeof(float));
-      // printf("## DML cross_k:\n");
-      // for (int i = 0; i < 20; ++i) {
-      //   printf("%f ", cross_kv[i]);
-      // }
-      // printf("\n");
-
-      // dml_mem_manager_->CopyFromGPU(&cross_v_mem_, cross_kv.data(),
-      //                               n_text_layer_ * batch_size * (3000 / 2) *
-      //                                   n_text_state_ * sizeof(float));
-      // printf("## DML cross_v:\n");
-      // for (int i = 0; i < 20; ++i) {
-      //   printf("%f ", cross_kv[i]);
-      // }
-      // printf("\n");
-
-      std::vector<int64_t> offset(batch_size);
-      dml_mem_manager_->CopyFromGPU(&output_offset_mem_, offset.data(),
-                                    batch_size * sizeof(int64_t));
-      dml_mem_manager_->WaitForGPU();
-      dml_mem_manager_->FlushCommandLists();
-      printf("## DML offset: %d\n", offset[0]);
-
-      std::vector<int32_t> attention_mask(batch_size);
-      dml_mem_manager_->CopyFromGPU(&output_attention_mask_mem_,
-                                    attention_mask.data(),
-                                    batch_size * sizeof(int32_t));
-      dml_mem_manager_->WaitForGPU();
-      dml_mem_manager_->FlushCommandLists();
-      printf("## DML attention_mask: %d\n", attention_mask[0]);
-
-      bool *sel = new bool[batch_size * n_text_ctx_];
-      dml_mem_manager_->CopyFromGPU(&output_sel_mem_, sel,
-                                    batch_size * n_text_ctx_ * sizeof(bool));
-      dml_mem_manager_->WaitForGPU();
-      dml_mem_manager_->FlushCommandLists();
-
-      printf("## DML sel: ");
-      for (int i = 0; i < 20; ++i) {
-        printf("%d ", sel[i]);
-      }
-      printf("\n");
-      delete[] sel;
 
       dml_mem_manager_->CopyFromGPUToGPU(&output_tokens_mem_, &tokens_mem_,
                                          batch_size * sizeof(int64_t));
@@ -819,7 +702,6 @@ class OfflineWhisperModelOpt::Impl {
   void ResetStep() {
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
     if (dml_mem_manager_) {
-      printf("## ResetStep\n");
       step_ = 0;
       dml_mem_manager_->CopyToGPU(self_kv_init_buffer_.data(), &self_k_mem_,
                                   self_kv_init_buffer_.size() * sizeof(float));

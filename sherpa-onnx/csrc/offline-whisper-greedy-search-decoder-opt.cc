@@ -73,27 +73,17 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeIOBinding(
   std::array<int64_t, 2> token_shape{batch_size, 1};
   std::vector<int32_t> predicted_tokens_one_step(batch_size);
 
-  for (auto v : initial_tokens) {
-    printf("initial token: %d\n", v);
-  }
-
   model_->ResetStep();
-  printf("## model_->ResetStep()\n");
   for (int32_t i = 0; i < initial_tokens.size(); i++) {
     for (int32_t b = 0; b < batch_size; b++) {
       token_buffer[b] = initial_tokens[i];
     }
 
-    printf("## Decoding step %d input_token: %d\n", i, initial_tokens[i]);
     Ort::Value tokens = Ort::Value::CreateTensor(
         memory_info, token_buffer.data(), token_buffer.size(),
         token_shape.data(), token_shape.size());
     auto decoder_out = model_->ForwardDecoderWithBinding(std::move(tokens));
     const auto &best_tokens = std::get<0>(decoder_out);
-
-    printf("## model_->ForwardDecoderWithBinding() step=%d, best_token=%d\n", i,
-           best_tokens.GetTensorData<int64_t>()[0]);
-
     if (i == initial_tokens.size() - 1) {
       const int64_t *p_best_tokens = best_tokens.GetTensorData<int64_t>();
       for (int32_t b = 0; b < batch_size; ++b) {
@@ -110,7 +100,7 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeIOBinding(
   int32_t n_text_ctx = model_->TextCtx();
   num_possible_tokens = std::min<int32_t>(num_possible_tokens, n_text_ctx / 2);
   int32_t eot = model_->EOT();
-  printf("## EOT=%d\n", eot);
+
   for (int32_t i = initial_tokens.size();
        i < initial_tokens.size() + num_possible_tokens; ++i) {
     bool all_eot = true;
@@ -131,8 +121,7 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeIOBinding(
     auto decoder_out = model_->ForwardDecoderWithBinding();
     const auto &best_tokens = std::get<0>(decoder_out);
     const int64_t *p_best_tokens = best_tokens.GetTensorData<int64_t>();
-    printf("## model_->ForwardDecoderWithBinding() step=%d, best_token=%d\n", i,
-           p_best_tokens[0]);
+
     for (int32_t b = 0; b < batch_size; ++b) {
       predicted_tokens_one_step[b] = static_cast<int32_t>(p_best_tokens[b]);
     }
@@ -251,32 +240,10 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeOrig(Ort::Value cross_k,
     for (int32_t b = 0; b < batch_size; b++) {
       p_tokens[b] = initial_tokens[i];
     }
-    printf("## Decoding step %d input_token: %d\n", i, initial_tokens[i]);
     auto decoder_out = model_->ForwardDecoder(
         std::move(inputs[0]), std::move(inputs[1]), std::move(inputs[2]),
         std::move(inputs[3]), std::move(inputs[4]), std::move(inputs[5]),
         std::move(inputs[6]), std::move(inputs[7]));
-    const auto &tokens = std::get<3>(decoder_out);
-    const int64_t *pp_tokens = tokens.GetTensorData<int64_t>();
-    printf("## model_->ForwardDecoder() step=%d, best_token=%d\n", i,
-           pp_tokens[0]);
-    if (i == initial_tokens.size() - 1) {
-      for (int32_t j = 0; j < batch_size; ++j) {
-        predicted_tokens_one_step[j] = static_cast<int32_t>(pp_tokens[j]);
-      }
-    }
-    auto p_self_k = std::get<1>(decoder_out).GetTensorMutableData<float>();
-    auto p_self_v = std::get<2>(decoder_out).GetTensorMutableData<float>();
-    printf("## self_k_cache after step %d:\n", i);
-    for (int j = 0; j < 20; ++j) {
-      printf("%f ", p_self_k[j + i * n_text_state]);
-    }
-    printf("\n");
-    printf("## self_v_cache after step %d:\n", i);
-    for (int j = 0; j < 20; ++j) {
-      printf("%f ", p_self_v[j + i * n_text_state]);
-    }
-    printf("\n");
     inputs.clear();
     inputs.push_back(std::move(std::get<3>(decoder_out)));
     inputs.push_back(std::move(std::get<1>(decoder_out)));
@@ -320,8 +287,6 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeOrig(Ort::Value cross_k,
 
     const auto &tokens = std::get<3>(decoder_out);
     const int64_t *p_tokens = tokens.GetTensorData<int64_t>();
-    printf("## model_->ForwardDecoder() step=%d, best_token=%d\n", i,
-           p_tokens[0]);
     for (int32_t b = 0; b < batch_size; ++b) {
       predicted_tokens_one_step[b] = static_cast<int32_t>(p_tokens[b]);
     }

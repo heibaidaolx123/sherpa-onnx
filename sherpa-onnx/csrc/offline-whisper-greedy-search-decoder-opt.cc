@@ -244,6 +244,13 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeOrig(Ort::Value cross_k,
         std::move(inputs[0]), std::move(inputs[1]), std::move(inputs[2]),
         std::move(inputs[3]), std::move(inputs[4]), std::move(inputs[5]),
         std::move(inputs[6]), std::move(inputs[7]));
+    if (i == initial_tokens.size() - 1) {
+      const auto &tokens = std::get<3>(decoder_out);
+      const int64_t *p_tokens = tokens.GetTensorData<int64_t>();
+      for (int32_t b = 0; b < batch_size; ++b) {
+        predicted_tokens_one_step[b] = static_cast<int32_t>(p_tokens[b]);
+      }
+    }
     inputs.clear();
     inputs.push_back(std::move(std::get<3>(decoder_out)));
     inputs.push_back(std::move(std::get<1>(decoder_out)));

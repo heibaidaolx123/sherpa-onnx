@@ -87,6 +87,8 @@ class OfflineWhisperModelOpt {
 
   std::tuple<Ort::Value> ForwardDecoderWithBinding(Ort::Value tokens);
 
+  std::tuple<Ort::Value> ForwardDecoderWithBinding();
+
   std::vector<int32_t> DetectLanguageWithBinding();
 
   /** Reset the step counter for a new sequence generation */

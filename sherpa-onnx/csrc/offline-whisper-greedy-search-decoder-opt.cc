@@ -73,24 +73,21 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeIOBinding(
   std::array<int64_t, 2> token_shape{batch_size, 1};
   std::vector<int32_t> predicted_tokens_one_step(batch_size);
 
+  model_->ResetStep();
   for (int32_t i = 0; i < initial_tokens.size(); i++) {
     for (int32_t b = 0; b < batch_size; b++) {
       token_buffer[b] = initial_tokens[i];
     }
+
     Ort::Value tokens = Ort::Value::CreateTensor(
         memory_info, token_buffer.data(), token_buffer.size(),
         token_shape.data(), token_shape.size());
     auto decoder_out = model_->ForwardDecoderWithBinding(std::move(tokens));
-    const auto &logits = std::get<0>(decoder_out);
-    auto logits_shape = logits.GetTensorTypeAndShapeInfo().GetShape();
+    const auto &best_tokens = std::get<0>(decoder_out);
     if (i == initial_tokens.size() - 1) {
-      int32_t vocab_size = logits_shape[2];
-      const float *p_logits = logits.GetTensorData<float>();
-      for (int32_t j = 0; j < batch_size; ++j) {
-        predicted_tokens_one_step[j] = static_cast<int32_t>(
-            std::distance(p_logits + (j * vocab_size),
-                          std::max_element(p_logits + (j * vocab_size),
-                                           p_logits + (j + 1) * vocab_size)));
+      const int64_t *p_best_tokens = best_tokens.GetTensorData<int64_t>();
+      for (int32_t b = 0; b < batch_size; ++b) {
+        predicted_tokens_one_step[b] = static_cast<int32_t>(p_best_tokens[b]);
       }
     }
   }
@@ -103,6 +100,7 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeIOBinding(
   int32_t n_text_ctx = model_->TextCtx();
   num_possible_tokens = std::min<int32_t>(num_possible_tokens, n_text_ctx / 2);
   int32_t eot = model_->EOT();
+
   for (int32_t i = initial_tokens.size();
        i < initial_tokens.size() + num_possible_tokens; ++i) {
     bool all_eot = true;
@@ -116,24 +114,16 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeIOBinding(
       } else {
         stop_signs[b] = true;
       }
-      token_buffer[b] = token;
     }
     if (all_eot) {
       break;
     }
-    Ort::Value tokens = Ort::Value::CreateTensor(
-        memory_info, token_buffer.data(), token_buffer.size(),
-        token_shape.data(), token_shape.size());
-    auto decoder_out = model_->ForwardDecoderWithBinding(std::move(tokens));
-    const auto &logits = std::get<0>(decoder_out);
-    auto logits_shape = logits.GetTensorTypeAndShapeInfo().GetShape();
-    int32_t vocab_size = logits_shape[2];
-    const float *p_logits = logits.GetTensorData<float>();
-    for (int32_t j = 0; j < batch_size; ++j) {
-      predicted_tokens_one_step[j] = static_cast<int32_t>(
-          std::distance(p_logits + (j * vocab_size),
-                        std::max_element(p_logits + (j * vocab_size),
-                                         p_logits + (j + 1) * vocab_size)));
+    auto decoder_out = model_->ForwardDecoderWithBinding();
+    const auto &best_tokens = std::get<0>(decoder_out);
+    const int64_t *p_best_tokens = best_tokens.GetTensorData<int64_t>();
+
+    for (int32_t b = 0; b < batch_size; ++b) {
+      predicted_tokens_one_step[b] = static_cast<int32_t>(p_best_tokens[b]);
     }
   }
   std::vector<OfflineWhisperDecoderResult> ans(batch_size);
@@ -199,11 +189,9 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeOrig(Ort::Value cross_k,
 
   initial_tokens.push_back(model_->NoTimeStampsToken());
 
-  std::vector<int64_t> token_buffer(batch_size);
   std::array<int64_t, 2> token_shape{batch_size, static_cast<int64_t>(1)};
-  Ort::Value tokens = Ort::Value::CreateTensor(
-      memory_info, token_buffer.data(), token_buffer.size(), token_shape.data(),
-      token_shape.size());
+  Ort::Value tokens = Ort::Value::CreateTensor<int64_t>(
+      model_->Allocator(), token_shape.data(), token_shape.size());
 
   auto self_kv_cache = model_->GetInitialSelfKVCache(batch_size);
   // self_k_cache, self_v_cache: (n_text_layer, N, n_text_ctx, n_text_state)
@@ -214,74 +202,57 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeOrig(Ort::Value cross_k,
   int32_t n_text_ctx = self_kv_shape[2];
   int32_t n_text_state = self_kv_shape[3];
 
-  int64_t offset_value = 0;
-  std::array<int64_t, 1> offset_shape{1};
-  Ort::Value offset = Ort::Value::CreateTensor(
-      memory_info, &offset_value, 1, offset_shape.data(), offset_shape.size());
+  std::array<int64_t, 1> offset_shape{batch_size};
+  Ort::Value offset = Ort::Value::CreateTensor<int64_t>(
+      model_->Allocator(), offset_shape.data(), offset_shape.size());
+  std::fill(offset.GetTensorMutableData<int64_t>(),
+            offset.GetTensorMutableData<int64_t>() + batch_size, 0);
 
-  int32_t mask_value = 1;
-  std::array<int64_t, 1> mask_shape{1};
-  Ort::Value mask = Ort::Value::CreateTensor(
-      memory_info, &mask_value, 1, mask_shape.data(), mask_shape.size());
+  std::array<int64_t, 1> mask_shape{batch_size};
+  Ort::Value mask = Ort::Value::CreateTensor<int32_t>(
+      model_->Allocator(), mask_shape.data(), mask_shape.size());
+  std::fill(mask.GetTensorMutableData<int32_t>(),
+            mask.GetTensorMutableData<int32_t>() + batch_size, 1);
 
-  std::array<int64_t, 3> sel_shape{1, n_text_ctx, 1};
+  std::array<int64_t, 3> sel_shape{batch_size, n_text_ctx, 1};
   Ort::Value sel = Ort::Value::CreateTensor<bool>(
       model_->Allocator(), sel_shape.data(), sel_shape.size());
   bool *sel_data = sel.GetTensorMutableData<bool>();
   std::fill(sel_data, sel_data + sel_shape[0] * sel_shape[1] * sel_shape[2],
             false);
+  for (int32_t b = 0; b < batch_size; b++) {
+    sel_data[b * n_text_ctx] = true;
+  }
 
   std::vector<int32_t> predicted_tokens_one_step(batch_size);
+  std::vector<Ort::Value> inputs;
+  inputs.push_back(std::move(tokens));
+  inputs.push_back(std::move(self_k_cache));
+  inputs.push_back(std::move(self_v_cache));
+  inputs.push_back(std::move(View(&cross_k)));
+  inputs.push_back(std::move(View(&cross_v)));
+  inputs.push_back(std::move(offset));
+  inputs.push_back(std::move(mask));
+  inputs.push_back(std::move(sel));
 
   for (int32_t i = 0; i < initial_tokens.size(); i++) {
-    for (int32_t j = 0; j < batch_size; j++) {
-      token_buffer[j] = initial_tokens[i];
+    int64_t *p_tokens = inputs[0].GetTensorMutableData<int64_t>();
+    for (int32_t b = 0; b < batch_size; b++) {
+      p_tokens[b] = initial_tokens[i];
     }
-
-    sel_data[i] = true;
     auto decoder_out = model_->ForwardDecoder(
-        std::move(View(&tokens)), std::move(View(&self_k_cache)),
-        std::move(View(&self_v_cache)), std::move(View(&cross_k)),
-        std::move(View(&cross_v)), std::move(View(&offset)),
-        std::move(View(&mask)), std::move(View(&sel)));
-    const auto &logits = std::get<0>(decoder_out);
-    const auto &logits_shape = logits.GetTensorTypeAndShapeInfo().GetShape();
-    const auto &k = std::get<1>(decoder_out);
-    const auto &v = std::get<2>(decoder_out);
-    float *p_k = std::get<1>(decoder_out).GetTensorMutableData<float>();
-    float *p_v = std::get<2>(decoder_out).GetTensorMutableData<float>();
-    const auto &kshape = k.GetTensorTypeAndShapeInfo().GetShape();
-    const auto &vshape = v.GetTensorTypeAndShapeInfo().GetShape();
-
-    if (i == initial_tokens.size() - 1) {
-      int32_t vocab_size = logits_shape[2];
-      const float *p_logits = logits.GetTensorData<float>();
-      for (int32_t j = 0; j < batch_size; ++j) {
-        predicted_tokens_one_step[j] = static_cast<int32_t>(
-            std::distance(p_logits + (j * vocab_size),
-                          std::max_element(p_logits + (j * vocab_size),
-                                           p_logits + (j + 1) * vocab_size)));
-      }
-    }
-    // self_k_cache, self_v_cache: (n_text_layer, N, n_text_ctx, n_text_state)
-    // k, v: (n_text_layer, N, 1, n_text_state)
-    // Copy the key and value tensors to the self attention cache, at
-    // (n_text_layer, N, i, n_text_state)
-    for (int32_t l = 0; l < num_layers; ++l) {
-      for (int32_t b = 0; b < batch_size; ++b) {
-        float *k_src = p_k + (l * batch_size + b) * n_text_state;
-        float *k_dst = self_k_cache.GetTensorMutableData<float>() +
-                       ((l * batch_size + b) * n_text_ctx + i) * n_text_state;
-        float *v_src = p_v + (l * batch_size + b) * n_text_state;
-        float *v_dst = self_v_cache.GetTensorMutableData<float>() +
-                       ((l * batch_size + b) * n_text_ctx + i) * n_text_state;
-        std::copy(k_src, k_src + n_text_state, k_dst);
-        std::copy(v_src, v_src + n_text_state, v_dst);
-      }
-    }
-    offset_value += 1;
-    mask_value += 1;
-    sel_data[i] = false;
+        std::move(inputs[0]), std::move(inputs[1]), std::move(inputs[2]),
+        std::move(inputs[3]), std::move(inputs[4]), std::move(inputs[5]),
+        std::move(inputs[6]), std::move(inputs[7]));
+    inputs.clear();
+    inputs.push_back(std::move(std::get<3>(decoder_out)));
+    inputs.push_back(std::move(std::get<1>(decoder_out)));
+    inputs.push_back(std::move(std::get<2>(decoder_out)));
+    inputs.push_back(std::move(View(&cross_k)));
+    inputs.push_back(std::move(View(&cross_v)));
+    inputs.push_back(std::move(std::get<4>(decoder_out)));
+    inputs.push_back(std::move(std::get<5>(decoder_out)));
+    inputs.push_back(std::move(std::get<6>(decoder_out)));
   }
 
   std::vector<std::vector<int32_t>> predicted_tokens(batch_size);
@@ -304,47 +275,30 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeOrig(Ort::Value cross_k,
       } else {
         stop_signs[b] = true;
       }
-      token_buffer[b] = token;
     }
     if (all_eot) {
       break;
     }
 
-    sel_data[i] = true;
     auto decoder_out = model_->ForwardDecoder(
-        std::move(View(&tokens)), std::move(View(&self_k_cache)),
-        std::move(View(&self_v_cache)), std::move(View(&cross_k)),
-        std::move(View(&cross_v)), std::move(View(&offset)),
-        std::move(View(&mask)), std::move(View(&sel)));
-    const auto &logits = std::get<0>(decoder_out);
-    float *k = std::get<1>(decoder_out).GetTensorMutableData<float>();
-    float *v = std::get<2>(decoder_out).GetTensorMutableData<float>();
+        std::move(inputs[0]), std::move(inputs[1]), std::move(inputs[2]),
+        std::move(inputs[3]), std::move(inputs[4]), std::move(inputs[5]),
+        std::move(inputs[6]), std::move(inputs[7]));
 
-    auto logits_shape = logits.GetTensorTypeAndShapeInfo().GetShape();
-    int32_t vocab_size = logits_shape[2];
-    const float *p_logits = logits.GetTensorData<float>();
-    for (int32_t j = 0; j < batch_size; ++j) {
-      predicted_tokens_one_step[j] = static_cast<int32_t>(
-          std::distance(p_logits + (j * vocab_size),
-                        std::max_element(p_logits + (j * vocab_size),
-                                         p_logits + (j + 1) * vocab_size)));
+    const auto &tokens = std::get<3>(decoder_out);
+    const int64_t *p_tokens = tokens.GetTensorData<int64_t>();
+    for (int32_t b = 0; b < batch_size; ++b) {
+      predicted_tokens_one_step[b] = static_cast<int32_t>(p_tokens[b]);
     }
-
-    for (int32_t l = 0; l < num_layers; ++l) {
-      for (int32_t b = 0; b < batch_size; ++b) {
-        float *k_src = k + (l * batch_size + b) * n_text_state;
-        float *k_dst = self_k_cache.GetTensorMutableData<float>() +
-                       ((l * batch_size + b) * n_text_ctx + i) * n_text_state;
-        float *v_src = v + (l * batch_size + b) * n_text_state;
-        float *v_dst = self_v_cache.GetTensorMutableData<float>() +
-                       ((l * batch_size + b) * n_text_ctx + i) * n_text_state;
-        std::copy(k_src, k_src + n_text_state, k_dst);
-        std::copy(v_src, v_src + n_text_state, v_dst);
-      }
-    }
-    offset_value += 1;
-    mask_value += 1;
-    sel_data[i] = false;
+    inputs.clear();
+    inputs.push_back(std::move(std::get<3>(decoder_out)));
+    inputs.push_back(std::move(std::get<1>(decoder_out)));
+    inputs.push_back(std::move(std::get<2>(decoder_out)));
+    inputs.push_back(std::move(View(&cross_k)));
+    inputs.push_back(std::move(View(&cross_v)));
+    inputs.push_back(std::move(std::get<4>(decoder_out)));
+    inputs.push_back(std::move(std::get<5>(decoder_out)));
+    inputs.push_back(std::move(std::get<6>(decoder_out)));
   }
 
   std::vector<OfflineWhisperDecoderResult> ans(batch_size);

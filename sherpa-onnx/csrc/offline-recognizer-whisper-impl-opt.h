@@ -32,6 +32,7 @@ class OfflineRecognizerWhisperImplOpt : public OfflineRecognizerImpl {
         symbol_table_(config_.model_config.tokens),
         model_(std::make_unique<OfflineWhisperModelOpt>(config.model_config)) {
     Init();
+    printf("Initialized OfflineRecognizerWhisperImplOpt.\n");
   }
 
   template <typename Manager>

@@ -506,7 +506,7 @@ class OfflineWhisperModelOpt::Impl {
       dml_mem_manager_->FlushCommandLists();
       printf("## DML self_k:\n");
       for (int i = 0; i < 20; ++i) {
-        printf("%f ", self_kv[i]);
+        printf("%f ", self_kv[i + step_ * n_text_state_]);
       }
       printf("\n");
       dml_mem_manager_->CopyFromGPU(&output_self_v_mem_, self_kv.data(),
@@ -516,29 +516,29 @@ class OfflineWhisperModelOpt::Impl {
       dml_mem_manager_->FlushCommandLists();
       printf("## DML self_v:\n");
       for (int i = 0; i < 20; ++i) {
-        printf("%f ", self_kv[i]);
+        printf("%f ", self_kv[i + step_ * n_text_state_]);
       }
       printf("\n");
 
-      std::vector<float> cross_kv(n_text_layer_ * batch_size * (3000 / 2) *
-                                  n_text_state_);
-      dml_mem_manager_->CopyFromGPU(&cross_k_mem_, cross_kv.data(),
-                                    n_text_layer_ * batch_size * (3000 / 2) *
-                                        n_text_state_ * sizeof(float));
-      printf("## DML cross_k:\n");
-      for (int i = 0; i < 20; ++i) {
-        printf("%f ", cross_kv[i]);
-      }
-      printf("\n");
+      // std::vector<float> cross_kv(n_text_layer_ * batch_size * (3000 / 2) *
+      //                             n_text_state_);
+      // dml_mem_manager_->CopyFromGPU(&cross_k_mem_, cross_kv.data(),
+      //                               n_text_layer_ * batch_size * (3000 / 2) *
+      //                                   n_text_state_ * sizeof(float));
+      // printf("## DML cross_k:\n");
+      // for (int i = 0; i < 20; ++i) {
+      //   printf("%f ", cross_kv[i]);
+      // }
+      // printf("\n");
 
-      dml_mem_manager_->CopyFromGPU(&cross_v_mem_, cross_kv.data(),
-                                    n_text_layer_ * batch_size * (3000 / 2) *
-                                        n_text_state_ * sizeof(float));
-      printf("## DML cross_v:\n");
-      for (int i = 0; i < 20; ++i) {
-        printf("%f ", cross_kv[i]);
-      }
-      printf("\n");
+      // dml_mem_manager_->CopyFromGPU(&cross_v_mem_, cross_kv.data(),
+      //                               n_text_layer_ * batch_size * (3000 / 2) *
+      //                                   n_text_state_ * sizeof(float));
+      // printf("## DML cross_v:\n");
+      // for (int i = 0; i < 20; ++i) {
+      //   printf("%f ", cross_kv[i]);
+      // }
+      // printf("\n");
 
       std::vector<int64_t> offset(batch_size);
       dml_mem_manager_->CopyFromGPU(&output_offset_mem_, offset.data(),
@@ -568,6 +568,8 @@ class OfflineWhisperModelOpt::Impl {
       printf("\n");
       delete[] sel;
 
+      dml_mem_manager_->CopyFromGPUToGPU(&output_tokens_mem_, &tokens_mem_,
+                                         batch_size * sizeof(int64_t));
       dml_mem_manager_->CopyFromGPUToGPU(
           &output_self_k_mem_, &self_k_mem_,
           self_kv_init_buffer_.size() * sizeof(float));
@@ -612,7 +614,7 @@ class OfflineWhisperModelOpt::Impl {
       std::array<int64_t, 2> best_tokens_shape{batch_size, 1};
       Ort::Value best_tokens = Ort::Value::CreateTensor<int64_t>(
           allocator_, best_tokens_shape.data(), best_tokens_shape.size());
-      dml_mem_manager_->CopyFromGPU(&tokens_mem_,
+      dml_mem_manager_->CopyFromGPU(&output_tokens_mem_,
                                     best_tokens.GetTensorMutableData<int64_t>(),
                                     batch_size * sizeof(int64_t));
       dml_mem_manager_->WaitForGPU();

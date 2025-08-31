@@ -83,6 +83,8 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeIOBinding(
     for (int32_t b = 0; b < batch_size; b++) {
       token_buffer[b] = initial_tokens[i];
     }
+
+    printf("## Decoding step %d input_token: %d\n", i, initial_tokens[i]);
     Ort::Value tokens = Ort::Value::CreateTensor(
         memory_info, token_buffer.data(), token_buffer.size(),
         token_shape.data(), token_shape.size());
@@ -249,7 +251,7 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeOrig(Ort::Value cross_k,
     for (int32_t b = 0; b < batch_size; b++) {
       p_tokens[b] = initial_tokens[i];
     }
-
+    printf("## Decoding step %d input_token: %d\n", i, initial_tokens[i]);
     auto decoder_out = model_->ForwardDecoder(
         std::move(inputs[0]), std::move(inputs[1]), std::move(inputs[2]),
         std::move(inputs[3]), std::move(inputs[4]), std::move(inputs[5]),
@@ -267,12 +269,12 @@ OfflineWhisperGreedySearchDecoderOpt::DecodeOrig(Ort::Value cross_k,
     auto p_self_v = std::get<2>(decoder_out).GetTensorMutableData<float>();
     printf("## self_k_cache after step %d:\n", i);
     for (int j = 0; j < 20; ++j) {
-      printf("%f ", p_self_k[j]);
+      printf("%f ", p_self_k[j + i * n_text_state]);
     }
     printf("\n");
     printf("## self_v_cache after step %d:\n", i);
     for (int j = 0; j < 20; ++j) {
-      printf("%f ", p_self_v[j]);
+      printf("%f ", p_self_v[j + i * n_text_state]);
     }
     printf("\n");
     inputs.clear();

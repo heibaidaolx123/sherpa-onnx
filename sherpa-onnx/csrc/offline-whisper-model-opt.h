@@ -57,9 +57,10 @@ class OfflineWhisperModelOpt {
    *                              (n_text_layer, N, n_audio_ctx, n_text_state).
    * @param n_layer_cross_v       A 4-D tensor of shape
    *                              (n_text_layer, N, n_audio_ctx, n_text_state).
-   * @param offset A int64 tensor of shape (1,)
-   * @param attention_mask A float tensor of (B, 1, 1, n_text_ctx)
-   * @param sel A bool tensor of (B, n_text_ctx, 1)
+   * @param offset A int64 tensor of shape (B,), init with 0
+   * @param attention_mask A int32 tensor of (B,), init with 1
+   * @param sel A bool tensor of (B, n_text_ctx, 1), init with B * [true, false,
+   *  false, false, ...]
    *
    * @return Return a tuple containing 7 tensors:
    *
@@ -69,8 +70,8 @@ class OfflineWhisperModelOpt {
    *  - out_n_layer_self_v_cache A 4-D tensor of shape
    *                              (n_text_layer, N, n_text_ctx, n_text_state).
    *  - token_next A 2-D tensor of shape (N, 1)
-   *  - offset_next A int64 tensor of shape (1,)
-   *  - mask_next A float tensor of shape (B, 1, 1, n_text_ctx)
+   *  - offset_next A int64 tensor of shape (B,)
+   *  - mask_next A int32 tensor of shape (B,)
    *  - sel_next A bool tensor of shape (B, n_text_ctx, 1)
    */
   std::tuple<Ort::Value, Ort::Value, Ort::Value, Ort::Value, Ort::Value,

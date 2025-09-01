@@ -35,6 +35,10 @@ struct OfflineSpeakerDiarizationConfig {
 
   int max_batch_size_embedding = 1;
 
+  int cpu_thread_pool_size_seg = 1;
+
+  int cpu_thread_pool_size_emb = 1;
+
   OfflineSpeakerDiarizationConfig() = default;
 
   OfflineSpeakerDiarizationConfig(

@@ -5,12 +5,15 @@
 #define SHERPA_ONNX_CSRC_OFFLINE_SPEAKER_DIARIZATION_PYANNOTE_IMPL_H_
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <ctime>
 #include <iomanip>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -44,6 +47,70 @@ struct PairHash {
   }
 };
 }  // namespace
+
+class ThreadPool {
+ public:
+  ThreadPool(const int &n) : stop_(false) {
+    for (int i = 0; i < n; ++i) {
+      workers_.emplace_back([this] {
+        while (true) {
+          std::function<void()> task;
+          {
+            std::unique_lock<std::mutex> lk(m_);
+            cv_task_.wait(lk, [this] { return stop_ || !tasks_.empty(); });
+            if (stop_) return;
+            task = std::move(tasks_.front());
+            tasks_.pop();
+            active_tasks_++;
+          }
+          task();
+          {
+            std::lock_guard<std::mutex> lk(m_);
+            active_tasks_--;
+            if (tasks_.empty() && active_tasks_ == 0) {
+              cv_done_.notify_all();
+            }
+          }
+        }
+      });
+    }
+  }
+  ~ThreadPool() {
+    {
+      std::lock_guard<std::mutex> lk(m_);
+      stop_ = true;
+    }
+    cv_task_.notify_all();
+    for (auto &t : workers_) t.join();
+  }
+  void enqueue(std::function<void()> f) {
+    {
+      std::lock_guard<std::mutex> lk(m_);
+      tasks_.push(std::move(f));
+    }
+    cv_task_.notify_one();
+  }
+  void wait_all() {
+    std::unique_lock<std::mutex> lk(m_);
+    cv_done_.wait(lk, [this] { return tasks_.empty() && active_tasks_ == 0; });
+  }
+  void stop() {
+    {
+      std::lock_guard<std::mutex> lk(m_);
+      stop_ = true;
+    }
+    cv_task_.notify_all();
+  }
+
+ private:
+  std::vector<std::thread> workers_;
+  std::queue<std::function<void()>> tasks_;
+  std::mutex m_;
+  std::condition_variable cv_task_;
+  bool stop_;
+  std::condition_variable cv_done_;
+  int active_tasks_ = 0;
+};
 
 using Matrix2D =
     Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
@@ -230,7 +297,17 @@ class OfflineSpeakerDiarizationPyannoteImpl
   }
 
  private:
-  void Init() { InitPowersetMapping(); }
+  void Init() {
+    InitPowersetMapping();
+    if (config_.segmentation.provider != "cpu" &&
+        config_.cpu_thread_pool_size_seg) {
+      SHERPA_ONNX_LOGE(
+          "You set cpu_thread_pool_size_seg to %d, but segmentation model is "
+          "not on CPU. Set cpu_thread_pool_size_seg to 1",
+          config_.cpu_thread_pool_size_seg);
+      config_.cpu_thread_pool_size_seg = 1;
+    }
+  }
 
   // see also
   // https://github.com/pyannote/pyannote-audio/blob/develop/pyannote/audio/utils/powerset.py#L68
@@ -310,7 +387,8 @@ class OfflineSpeakerDiarizationPyannoteImpl
 
     const float *p = audio;
 
-    if (config_.max_batch_size_segmentation == 1) {
+    if (config_.cpu_thread_pool_size_seg == 1 &&
+        config_.max_batch_size_segmentation == 1) {
       for (int32_t i = 0; i != num_chunks; ++i, p += window_shift) {
         std::lock_guard<std::mutex> lock(mtx_);
         if (stop_) {
@@ -345,8 +423,14 @@ class OfflineSpeakerDiarizationPyannoteImpl
         chunks.push_back(buf.data());
         chunk_sizes.push_back(n - (p - audio));
       }
-
-      ans = ProcessMultipleChunks(chunks, chunk_sizes);
+      if (config_.cpu_thread_pool_size_seg > 1) {
+        printf("Segmentation model is running with multi-threading\n");
+        ans = ProcessChunkMultiThread(chunks, chunk_sizes,
+                                      config_.cpu_thread_pool_size_seg);
+      } else {
+        printf("Segmentation model is running with batch\n");
+        ans = ProcessChunkBatch(chunks, chunk_sizes);
+      }
     }
 
     return ans;
@@ -373,7 +457,7 @@ class OfflineSpeakerDiarizationPyannoteImpl
     return m;
   }
 
-  std::vector<Matrix2D> ProcessMultipleChunks(
+  std::vector<Matrix2D> ProcessChunkBatch(
       const std::vector<float *> &chunks,
       const std::vector<int32_t> &chunk_sizes) {
     if (chunks.empty()) {
@@ -441,6 +525,44 @@ class OfflineSpeakerDiarizationPyannoteImpl
       }
     }
 
+    return ans;
+  }
+
+  std::vector<Matrix2D> ProcessChunkMultiThread(
+      const std::vector<float *> &chunks,
+      const std::vector<int32_t> &chunk_sizes, const int32_t &pool_size) {
+    if (chunks.empty()) {
+      SHERPA_ONNX_LOGE("No chunks provided for processing");
+      return {};
+    }
+
+    ThreadPool thread_pool(pool_size);
+
+    int64_t num_chunks = chunks.size();
+
+    std::vector<Matrix2D> ans;
+    ans.resize(chunks.size());
+    for (int i = 0; i < num_chunks; ++i) {
+      thread_pool.enqueue([&, i] {
+        const auto chunk = chunks[i];
+        auto emb = ProcessChunk(chunk);
+        ans[i] = std::move(emb);
+        {
+          std::lock_guard<std::mutex> lock(mtx_);
+          if (stop_) {
+            return;
+          }
+        }
+      });
+    }
+    thread_pool.wait_all();
+
+    {
+      std::lock_guard<std::mutex> lock(mtx_);
+      if (stop_) {
+        return {};
+      }
+    }
     return ans;
   }
 

@@ -68,6 +68,14 @@ class OfflineRecognizerWhisperImplOpt : public OfflineRecognizerImpl {
   }
 
   void DecodeStreams(OfflineStream **ss, int32_t n) const override {
+    if (n > config_.model_config.whisper.max_batch_size) {
+      SHERPA_ONNX_LOGE(
+          "n exceeds max_batch_size: %d > %d. Please set "
+          "max_batch_size in the config file",
+          n, config_.model_config.whisper.max_batch_size);
+      throw std::runtime_error("n exceeds max_batch_size");
+    }
+
     decoder_->SetConfig(config_.model_config.whisper);
 
     int32_t max_num_frames = 3000;
@@ -76,12 +84,14 @@ class OfflineRecognizerWhisperImplOpt : public OfflineRecognizerImpl {
 
     int32_t feat_dim = ss[0]->FeatureDim();
 
-    std::array<int64_t, 3> shape{n, max_num_frames, feat_dim};
+    int32_t target_batch_size = config_.model_config.whisper.max_batch_size;
+
+    std::array<int64_t, 3> shape{target_batch_size, max_num_frames, feat_dim};
     Ort::Value mel = Ort::Value::CreateTensor<float>(
         model_->Allocator(), shape.data(), shape.size());
     float *p_mel = mel.GetTensorMutableData<float>();
 
-    std::vector<int32_t> num_frames_vec(n);
+    std::vector<int32_t> num_frames_vec(target_batch_size, 0);
     for (int32_t i = 0; i < n; ++i) {
       OfflineStream *s = ss[i];
       std::vector<float> f = s->GetFrames();
@@ -100,13 +110,12 @@ class OfflineRecognizerWhisperImplOpt : public OfflineRecognizerImpl {
       printf("Using IO binding for whisper encoder\n");
       model_->ForwardEncoderWithBinding(std::move(mel));
       printf("Using IO binding for whisper decoder\n");
-      int32_t batch_size = n;
       std::array<int64_t, 1> fake_kv_shape{1};
       Ort::Value fake_k =
-          Ort::Value::CreateTensor(memory_info, &batch_size, 1,
+          Ort::Value::CreateTensor(memory_info, &target_batch_size, 1,
                                    fake_kv_shape.data(), fake_kv_shape.size());
       Ort::Value fake_v =
-          Ort::Value::CreateTensor(memory_info, &batch_size, 1,
+          Ort::Value::CreateTensor(memory_info, &target_batch_size, 1,
                                    fake_kv_shape.data(), fake_kv_shape.size());
 
       auto result_vec = decoder_->Decode(
@@ -126,10 +135,10 @@ class OfflineRecognizerWhisperImplOpt : public OfflineRecognizerImpl {
           cross_kv_batched.first.GetTensorTypeAndShapeInfo().GetShape();
       int32_t n_text_layer = kshape[0];
       int32_t n_bacth = kshape[1];
-      if (n_bacth != n) {
+      if (n_bacth != target_batch_size) {
         SHERPA_ONNX_LOGE(
-            "Expected batch size %d, but got %d. Please check your input.", n,
-            n_bacth);
+            "Expected batch size %d, but got %d. Please check your input.",
+            target_batch_size, n_bacth);
         return;
       }
       int32_t n_audio_ctx = kshape[2];

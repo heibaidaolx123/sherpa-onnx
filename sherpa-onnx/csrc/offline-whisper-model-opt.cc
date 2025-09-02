@@ -208,7 +208,78 @@ class OfflineWhisperModelOpt::Impl {
       encoder_io_binding_->BindOutput(encoder_output_names_ptr_[1],
                                       cross_kv_tensors_[1]);
 
-      decoder_io_binding_ = std::make_unique<Ort::IoBinding>(*decoder_sess_);
+      auto decoder_io_binding_0 =
+          std::make_unique<Ort::IoBinding>(*decoder_sess_);
+
+      auto &decoder_input_tensors = decoder_io_tensors_vec_[0];
+      decoder_io_binding_0->BindInput(decoder_input_names_ptr_[0],
+                                      decoder_io_tensors_vec_[0][0]);
+      decoder_io_binding_0->BindInput(decoder_input_names_ptr_[1],
+                                      decoder_io_tensors_vec_[0][1]);
+      decoder_io_binding_0->BindInput(decoder_input_names_ptr_[2],
+                                      decoder_io_tensors_vec_[0][2]);
+      decoder_io_binding_0->BindInput(decoder_input_names_ptr_[3],
+                                      cross_kv_tensors_[0]);
+      decoder_io_binding_0->BindInput(decoder_input_names_ptr_[4],
+                                      cross_kv_tensors_[1]);
+      decoder_io_binding_0->BindInput(decoder_input_names_ptr_[5],
+                                      decoder_io_tensors_vec_[0][3]);
+      decoder_io_binding_0->BindInput(decoder_input_names_ptr_[6],
+                                      decoder_io_tensors_vec_[0][4]);
+      decoder_io_binding_0->BindInput(decoder_input_names_ptr_[7],
+                                      decoder_io_tensors_vec_[0][5]);
+
+      decoder_io_binding_0->BindOutput(decoder_output_names_ptr_[0],
+                                       logits_tensors_[0]);
+      decoder_io_binding_0->BindOutput(decoder_output_names_ptr_[1],
+                                       decoder_io_tensors_vec_[1][1]);
+      decoder_io_binding_0->BindOutput(decoder_output_names_ptr_[2],
+                                       decoder_io_tensors_vec_[1][2]);
+      decoder_io_binding_0->BindOutput(decoder_output_names_ptr_[3],
+                                       decoder_io_tensors_vec_[1][0]);
+      decoder_io_binding_0->BindOutput(decoder_output_names_ptr_[4],
+                                       decoder_io_tensors_vec_[1][3]);
+      decoder_io_binding_0->BindOutput(decoder_output_names_ptr_[5],
+                                       decoder_io_tensors_vec_[1][4]);
+      decoder_io_binding_0->BindOutput(decoder_output_names_ptr_[6],
+                                       decoder_io_tensors_vec_[1][5]);
+      auto decoder_io_binding_1 =
+          std::make_unique<Ort::IoBinding>(*decoder_sess_);
+
+      decoder_io_binding_1->BindInput(decoder_input_names_ptr_[0],
+                                      decoder_io_tensors_vec_[1][0]);
+      decoder_io_binding_1->BindInput(decoder_input_names_ptr_[1],
+                                      decoder_io_tensors_vec_[1][1]);
+      decoder_io_binding_1->BindInput(decoder_input_names_ptr_[2],
+                                      decoder_io_tensors_vec_[1][2]);
+      decoder_io_binding_1->BindInput(decoder_input_names_ptr_[3],
+                                      cross_kv_tensors_[0]);
+      decoder_io_binding_1->BindInput(decoder_input_names_ptr_[4],
+                                      cross_kv_tensors_[1]);
+      decoder_io_binding_1->BindInput(decoder_input_names_ptr_[5],
+                                      decoder_io_tensors_vec_[1][3]);
+      decoder_io_binding_1->BindInput(decoder_input_names_ptr_[6],
+                                      decoder_io_tensors_vec_[1][4]);
+      decoder_io_binding_1->BindInput(decoder_input_names_ptr_[7],
+                                      decoder_io_tensors_vec_[1][5]);
+
+      decoder_io_binding_1->BindOutput(decoder_output_names_ptr_[0],
+                                       logits_tensors_[0]);
+      decoder_io_binding_1->BindOutput(decoder_output_names_ptr_[1],
+                                       decoder_io_tensors_vec_[0][1]);
+      decoder_io_binding_1->BindOutput(decoder_output_names_ptr_[2],
+                                       decoder_io_tensors_vec_[0][2]);
+      decoder_io_binding_1->BindOutput(decoder_output_names_ptr_[3],
+                                       decoder_io_tensors_vec_[0][0]);
+      decoder_io_binding_1->BindOutput(decoder_output_names_ptr_[4],
+                                       decoder_io_tensors_vec_[0][3]);
+      decoder_io_binding_1->BindOutput(decoder_output_names_ptr_[5],
+                                       decoder_io_tensors_vec_[0][4]);
+      decoder_io_binding_1->BindOutput(decoder_output_names_ptr_[6],
+                                       decoder_io_tensors_vec_[0][5]);
+
+      decoder_io_binding_vec_.push_back(std::move(decoder_io_binding_0));
+      decoder_io_binding_vec_.push_back(std::move(decoder_io_binding_1));
 
       ResetStep();
     }
@@ -366,9 +437,10 @@ class OfflineWhisperModelOpt::Impl {
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
     if (dml_mem_manager_) {
       int32_t index = step_ % 2;
-      auto &input_tensors = decoder_io_tensors_vec_[index];
-      auto &output_tensors = decoder_io_tensors_vec_[(index + 1) % 2];
-      SetupDecoderIoBinding(input_tensors, output_tensors);
+      // auto &input_tensors = decoder_io_tensors_vec_[index];
+      // auto &output_tensors = decoder_io_tensors_vec_[(index + 1) % 2];
+      // SetupDecoderIoBinding(input_tensors, output_tensors);
+      auto &decoder_io_binding_ = decoder_io_binding_vec_[index];
 
       dml_mem_manager_->CopyToGPU(tokens.GetTensorData<int64_t>(),
                                   &tokens_mem_vec_[index],
@@ -410,9 +482,10 @@ class OfflineWhisperModelOpt::Impl {
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
     if (dml_mem_manager_) {
       int32_t index = step_ % 2;
-      auto &input_tensors = decoder_io_tensors_vec_[index];
-      auto &output_tensors = decoder_io_tensors_vec_[(index + 1) % 2];
-      SetupDecoderIoBinding(input_tensors, output_tensors);
+      // auto &input_tensors = decoder_io_tensors_vec_[index];
+      // auto &output_tensors = decoder_io_tensors_vec_[(index + 1) % 2];
+      // SetupDecoderIoBinding(input_tensors, output_tensors);
+      auto &decoder_io_binding_ = decoder_io_binding_vec_[index];
 
       Ort::RunOptions ro;
       try {
@@ -617,39 +690,39 @@ class OfflineWhisperModelOpt::Impl {
                              std::vector<Ort::Value> &decoder_output_tensors) {
 #if defined(_WIN32) && SHERPA_ONNX_ENABLE_DIRECTML == 1
     if (dml_mem_manager_) {
-      decoder_io_binding_->ClearBoundInputs();
-      decoder_io_binding_->ClearBoundOutputs();
-      decoder_io_binding_->BindInput(decoder_input_names_ptr_[0],
-                                     decoder_input_tensors[0]);
-      decoder_io_binding_->BindInput(decoder_input_names_ptr_[1],
-                                     decoder_input_tensors[1]);
-      decoder_io_binding_->BindInput(decoder_input_names_ptr_[2],
-                                     decoder_input_tensors[2]);
-      decoder_io_binding_->BindInput(decoder_input_names_ptr_[3],
-                                     cross_kv_tensors_[0]);
-      decoder_io_binding_->BindInput(decoder_input_names_ptr_[4],
-                                     cross_kv_tensors_[1]);
-      decoder_io_binding_->BindInput(decoder_input_names_ptr_[5],
-                                     decoder_input_tensors[3]);
-      decoder_io_binding_->BindInput(decoder_input_names_ptr_[6],
-                                     decoder_input_tensors[4]);
-      decoder_io_binding_->BindInput(decoder_input_names_ptr_[7],
-                                     decoder_input_tensors[5]);
+      // decoder_io_binding_->ClearBoundInputs();
+      // decoder_io_binding_->ClearBoundOutputs();
+      // decoder_io_binding_->BindInput(decoder_input_names_ptr_[0],
+      //                                decoder_input_tensors[0]);
+      // decoder_io_binding_->BindInput(decoder_input_names_ptr_[1],
+      //                                decoder_input_tensors[1]);
+      // decoder_io_binding_->BindInput(decoder_input_names_ptr_[2],
+      //                                decoder_input_tensors[2]);
+      // decoder_io_binding_->BindInput(decoder_input_names_ptr_[3],
+      //                                cross_kv_tensors_[0]);
+      // decoder_io_binding_->BindInput(decoder_input_names_ptr_[4],
+      //                                cross_kv_tensors_[1]);
+      // decoder_io_binding_->BindInput(decoder_input_names_ptr_[5],
+      //                                decoder_input_tensors[3]);
+      // decoder_io_binding_->BindInput(decoder_input_names_ptr_[6],
+      //                                decoder_input_tensors[4]);
+      // decoder_io_binding_->BindInput(decoder_input_names_ptr_[7],
+      //                                decoder_input_tensors[5]);
 
-      decoder_io_binding_->BindOutput(decoder_output_names_ptr_[0],
-                                      logits_tensors_[0]);
-      decoder_io_binding_->BindOutput(decoder_output_names_ptr_[1],
-                                      decoder_output_tensors[1]);
-      decoder_io_binding_->BindOutput(decoder_output_names_ptr_[2],
-                                      decoder_output_tensors[2]);
-      decoder_io_binding_->BindOutput(decoder_output_names_ptr_[3],
-                                      decoder_output_tensors[0]);
-      decoder_io_binding_->BindOutput(decoder_output_names_ptr_[4],
-                                      decoder_output_tensors[3]);
-      decoder_io_binding_->BindOutput(decoder_output_names_ptr_[5],
-                                      decoder_output_tensors[4]);
-      decoder_io_binding_->BindOutput(decoder_output_names_ptr_[6],
-                                      decoder_output_tensors[5]);
+      // decoder_io_binding_->BindOutput(decoder_output_names_ptr_[0],
+      //                                 logits_tensors_[0]);
+      // decoder_io_binding_->BindOutput(decoder_output_names_ptr_[1],
+      //                                 decoder_output_tensors[1]);
+      // decoder_io_binding_->BindOutput(decoder_output_names_ptr_[2],
+      //                                 decoder_output_tensors[2]);
+      // decoder_io_binding_->BindOutput(decoder_output_names_ptr_[3],
+      //                                 decoder_output_tensors[0]);
+      // decoder_io_binding_->BindOutput(decoder_output_names_ptr_[4],
+      //                                 decoder_output_tensors[3]);
+      // decoder_io_binding_->BindOutput(decoder_output_names_ptr_[5],
+      //                                 decoder_output_tensors[4]);
+      // decoder_io_binding_->BindOutput(decoder_output_names_ptr_[6],
+      //                                 decoder_output_tensors[5]);
     }
 #endif
   }
@@ -848,7 +921,7 @@ class OfflineWhisperModelOpt::Impl {
   std::vector<std::vector<Ort::Value>> decoder_io_tensors_vec_;
   std::vector<Ort::Value> logits_tensors_;
   std::unique_ptr<Ort::IoBinding> encoder_io_binding_ = nullptr;
-  std::unique_ptr<Ort::IoBinding> decoder_io_binding_ = nullptr;
+  std::vector<std::unique_ptr<Ort::IoBinding>> decoder_io_binding_vec_;
   int32_t step_ = 0;
 #endif
   OfflineModelConfig config_;

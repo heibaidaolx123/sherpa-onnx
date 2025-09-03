@@ -115,6 +115,7 @@ class VoiceActivityDetector::Impl {
         // end of speech, save the speech segment
         int32_t end = buffer_.Tail() - model_->MinSilenceDurationSamples() +
                       config_.post_padding;
+        end = std::min(end, buffer_.Tail());
 
         std::vector<float> s = buffer_.Get(start_, end - start_);
         SpeechSegment segment;

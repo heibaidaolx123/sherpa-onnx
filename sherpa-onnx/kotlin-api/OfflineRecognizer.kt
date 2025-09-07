@@ -9,6 +9,9 @@ data class OfflineRecognizerResult(
     val lang: String,
     val emotion: String,
     val event: String,
+
+    // valid only for TDT models
+    val durations: FloatArray,
 )
 
 data class OfflineTransducerModelConfig(
@@ -139,13 +142,15 @@ class OfflineRecognizer(
         val lang = objArray[3] as String
         val emotion = objArray[4] as String
         val event = objArray[5] as String
+        val durations = objArray[6] as FloatArray
         return OfflineRecognizerResult(
             text = text,
             tokens = tokens,
             timestamps = timestamps,
             lang = lang,
             emotion = emotion,
-            event = event
+            event = event,
+            durations = durations,
         )
     }
 
@@ -675,6 +680,19 @@ fun getOfflineModelConfig(type: Int): OfflineModelConfig? {
                     model = "$modelDir/model.int8.onnx",
                 ),
                 tokens = "$modelDir/tokens.txt",
+            )
+        }
+
+        40 -> {
+            val modelDir = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
+            return OfflineModelConfig(
+                transducer = OfflineTransducerModelConfig(
+                    encoder = "$modelDir/encoder.int8.onnx",
+                    decoder = "$modelDir/decoder.int8.onnx",
+                    joiner = "$modelDir/joiner.int8.onnx",
+                ),
+                tokens = "$modelDir/tokens.txt",
+                modelType = "nemo_transducer",
             )
         }
     }

@@ -1,3 +1,73 @@
+## 1.12.11
+
+* Add two more Piper tts models (#2525)
+* Generate tts samples for MatchaTTS (English). (#2527)
+* Fix releasing go packages (#2529)
+* Add license info about tts models from OpenVoiceOS (#2530)
+* Support BPE models with byte fallback. (#2531)
+* Simplify the usage of our non-Android Java API (#2533)
+* Fix wasm for kws (#2535)
+* Add one more German tts model from OpenVoiceOS. (#2536)
+* Fix uploading win32 libs to huggingface (#2537)
+* Add Zipvoice (#2487)
+* Fix c api (#2545)
+* Fix linking (#2546)
+
+## 1.12.10
+
+* Add VOSK streaming Russian ASR models and Kroko streaming German ASR models (#2502)
+* Refactor CI tests (#2504)
+* Update APK versions (#2505)
+* Export whisper distil-large-v3 and distil-large-v3.5 to sherpa-onnx (#2506)
+* Support specifying pronunciations of phrases in Chinese TTS. (#2507)
+* fix(flutter): fix unicode problem in windows path (#2508)
+* feat: add punctuation C++ API (#2510)
+* Fix ctrl+c may lead to coredump (#2511)
+* Add kitten tts nano v0.2 (#2512)
+* Scripts to generate tts samples (#2513)
+* Add tdt duration to APIs (#2514)
+* Support 16KB page size for Android (#2520)
+* Split sherpa-onnx Python package (#2521)
+* Fix kokoro tts for punctuations (#2522)
+
+## 1.12.9
+
+* Add more piper tts models (#2480)
+* Fix ASR for UE (#2483)
+* push to maven center (#2463)
+* Specify ABIs when building APKs (#2488)
+* Add more debug info for vits tts (#2491)
+* Add Swift API for computing speaker embeddings (#2492)
+* Alex/feat add python example (#2490)
+* Support TDT transducer decoding (#2495)
+* Fix java test (#2496)
+* Refactor Swift API (#2493)
+* add TtsReader app to README.md (#2498)
+* Export https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3 to sherpa-onnx (#2500)
+* Fix building apk (#2499)
+
+## 1.12.8
+
+* Expose JNI to compute probability of chunk in VAD (#2433)
+* Add https://huggingface.co/Banafo/Kroko-ASR (#2453)
+* Add APIs for Online NeMo CTC models (#2454)
+* Export https://github.com/KittenML/KittenTTS to sherpa-onnx (#2456)
+* Fix punctuations in kokoro tts. (#2458)
+* Limit number of tokens in fire red asr decoding. (#2459)
+* Add C++ runtime for kitten-tts (#2460)
+* Add Kotlin and Java API for KittenTTS (#2461)
+* Add Android TTS Engine APK for KittenTTS (#2465)
+* Add Python API for KittenTTS. (#2466)
+* Add C API for KittenTTS (#2467)
+* Add CXX API for KittenTTS (#2469)
+* Add JavaScript API (node-addon) for KittenTTS (#2470)
+* Add JavaScript API (WebAssembly) for KittenTTS (#2471)
+* Add Pascal API for KittenTTS (#2474)
+* Add Dart API for KittenTTS (#2475)
+* Add Swift API for KittenTTS (#2476)
+* Add C# API for KittenTTS (#2477)
+* Add Go API for KittenTTS (#2478)
+
 ## 1.12.7
 
 * Support Portuguese and German ASR models from NeMo (#2394)

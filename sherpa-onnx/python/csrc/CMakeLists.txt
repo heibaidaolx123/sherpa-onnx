@@ -67,10 +67,12 @@ endif()
 
 if(SHERPA_ONNX_ENABLE_TTS)
   list(APPEND srcs
+    offline-tts-kitten-model-config.cc
     offline-tts-kokoro-model-config.cc
     offline-tts-matcha-model-config.cc
     offline-tts-model-config.cc
     offline-tts-vits-model-config.cc
+    offline-tts-zipvoice-model-config.cc
     offline-tts.cc
   )
 endif()
@@ -113,6 +115,4 @@ if(SHERPA_ONNX_HAS_ALSA)
   endif()
 endif()
 
-install(TARGETS _sherpa_onnx
-  DESTINATION ../
-)
+install(TARGETS _sherpa_onnx DESTINATION lib)

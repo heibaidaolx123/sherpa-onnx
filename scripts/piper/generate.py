@@ -249,6 +249,40 @@ def get_es_models():
         ]
     )
 
+    es_ES.extend(
+        [
+            PiperModel(
+                name="miro",
+                kind="high",
+                sr=22050,
+                ns=1,
+                cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_es-ES_miro/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_es-ES_miro" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_es-ES_miro/resolve/main/miro_es-ES.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_es-ES_miro/resolve/main/miro_es-ES.onnx.json
+
+                   mv miro_es-ES.onnx es_ES-miro-high.onnx
+                   mv miro_es-ES.onnx.json es_ES-miro-high.onnx.json
+                   """,
+                url="https://huggingface.co/OpenVoiceOS/pipertts_es-ES_miro",
+            ),
+        ]
+    )
+
     es_MX = [
         PiperModel(name="ald", kind="medium", sr=22050, ns=1),
         PiperModel(name="claude", kind="high", sr=22050, ns=1),
@@ -378,6 +412,39 @@ def get_fr_models():
         ]
     )
 
+    fr_FR += [
+        PiperModel(
+            name="miro",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_fr-FR_miro/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_fr-FR_miro" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_fr-FR_miro/resolve/main/miro_fr-FR.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_fr-FR_miro/resolve/main/miro_fr-FR.onnx.json
+
+                   mv miro_fr-FR.onnx fr_FR-miro-high.onnx
+                   mv miro_fr-FR.onnx.json fr_FR-miro-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_fr-FR_miro",
+        ),
+    ]
+
     for m in fr_FR:
         m.lang = "fr_FR"
         if m.model_name == "":
@@ -405,6 +472,7 @@ def get_hi_models():
     hi_IN = [
         PiperModel(name="pratham", kind="medium", sr=22050, ns=1),
         PiperModel(name="priyamvada", kind="medium", sr=22050, ns=1),
+        PiperModel(name="rohan", kind="medium", sr=22050, ns=1),
     ]
 
     for m in hi_IN:
@@ -495,6 +563,69 @@ def get_it_models():
     it_IT = [
         PiperModel(name="paola", kind="medium", sr=22050, ns=1),
         PiperModel(name="riccardo", kind="x_low", sr=16000, ns=1),
+    ]
+
+    it_IT += [
+        PiperModel(
+            name="miro",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_it-IT_miro/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_it-IT_miro" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_it-IT_miro/resolve/main/miro_it-IT.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_it-IT_miro/resolve/main/miro_it-IT.onnx.json
+
+                   mv miro_it-IT.onnx it_IT-miro-high.onnx
+                   mv miro_it-IT.onnx.json it_IT-miro-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_it-IT_miro",
+        ),
+        PiperModel(
+            name="dii",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_it-IT_dii/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_it-IT_dii" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_it-IT_dii/resolve/main/dii_it-IT.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_it-IT_dii/resolve/main/dii_it-IT.onnx.json
+
+                   mv dii_it-IT.onnx it_IT-dii-high.onnx
+                   mv dii_it-IT.onnx.json it_IT-dii-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_it-IT_dii",
+        ),
     ]
 
     for m in it_IT:
@@ -706,6 +837,69 @@ def get_nl_models():
         PiperModel(name="ronnie", kind="medium", sr=22050, ns=1),
     ]
 
+    nl_NL += [
+        PiperModel(
+            name="miro",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_nl-NL_miro/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_nl-NL_miro" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_nl-NL_miro/resolve/main/miro_nl-NL.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_nl-NL_miro/resolve/main/miro_nl-NL.onnx.json
+
+                   mv miro_nl-NL.onnx nl_NL-miro-high.onnx
+                   mv miro_nl-NL.onnx.json nl_NL-miro-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_nl-NL_miro",
+        ),
+        PiperModel(
+            name="dii",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_nl-NL_dii/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_nl-NL_dii" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_nl-NL_dii/resolve/main/dii_nl-NL.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_nl-NL_dii/resolve/main/dii_nl-NL.onnx.json
+
+                   mv dii_nl-NL.onnx nl_NL-dii-high.onnx
+                   mv dii_nl-NL.onnx.json nl_NL-dii-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_nl-NL_dii",
+        ),
+    ]
+
     for m in nl_BE:
         m.lang = "nl_BE"
 
@@ -858,7 +1052,147 @@ def get_pt_models():
     ]
 
     pt_PT = [
-        PiperModel(name="tugão", kind="medium", sr=22050, ns=1),
+        PiperModel(
+            name="tugao",
+            kind="medium",
+            sr=22050,
+            ns=1,
+            cmd="""
+                    wget -qq https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_PT/tugão/medium/pt_PT-tugão-medium.onnx
+                    wget -qq https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_PT/tugão/medium/pt_PT-tugão-medium.onnx.json
+                    wget -qq https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_PT/tugão/medium/MODEL_CARD
+
+                    mv pt_PT-tugão-medium.onnx pt_PT-tugao-medium.onnx
+                    mv pt_PT-tugão-medium.onnx.json pt_PT-tugao-medium.onnx.json
+                   """,
+            url="https://huggingface.co/rhasspy/piper-voices/tree/main/pt/pt_PT/tugão/medium",
+        ),
+    ]
+
+    pt_PT += [
+        PiperModel(
+            name="miro",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_pt-PT_miro/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_pt-PT_miro" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_pt-PT_miro/resolve/main/miro_pt-PT.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_pt-PT_miro/resolve/main/miro_pt-PT.onnx.json
+
+                   mv miro_pt-PT.onnx pt_PT-miro-high.onnx
+                   mv miro_pt-PT.onnx.json pt_PT-miro-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_pt-PT_miro",
+        ),
+        PiperModel(
+            name="dii",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_pt-PT_dii/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_pt-PT_dii" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_pt-PT_dii/resolve/main/dii_pt-PT.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_pt-PT_dii/resolve/main/dii_pt-PT.onnx.json
+
+                   mv dii_pt-PT.onnx pt_PT-dii-high.onnx
+                   mv dii_pt-PT.onnx.json pt_PT-dii-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_pt-PT_dii",
+        ),
+    ]
+
+    pt_BR += [
+        PiperModel(
+            name="miro",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_pt-BR_miro/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_pt-BR_miro" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_pt-BR_miro/resolve/main/miro_pt-BR.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_pt-BR_miro/resolve/main/miro_pt-BR.onnx.json
+
+                   mv miro_pt-BR.onnx pt_BR-miro-high.onnx
+                   mv miro_pt-BR.onnx.json pt_BR-miro-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_pt-BR_miro",
+        ),
+        PiperModel(
+            name="dii",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_pt-BR_dii/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_pt-BR_dii" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_pt-BR_dii/resolve/main/dii_pt-BR.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_pt-BR_dii/resolve/main/dii_pt-BR.onnx.json
+
+                   mv dii_pt-BR.onnx pt_BR-dii-high.onnx
+                   mv dii_pt-BR.onnx.json pt_BR-dii-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_pt-BR_dii",
+        ),
     ]
 
     for m in pt_BR:
@@ -1197,6 +1531,36 @@ def get_vi_models():
     return ans
 
 
+# Indonesian
+def get_id_models():
+    id_ID = [
+        PiperModel(name="news_tts", kind="medium", sr=22050, ns=1),
+    ]
+
+    for m in id_ID:
+        m.lang = "id_ID"
+
+    ans = id_ID
+
+    for m in ans:
+        m.text = "Jangan tanyakan apa yang negara bisa berikan kepadamu, tapi tanyakan apa yang bisa kamu berikan untuk negaramu."
+
+        if m.model_name == "":
+            m.model_name = f"{m.lang}-{m.name}-{m.kind}.onnx"
+
+        code = m.lang[:2]
+        if m.cmd == "":
+            m.cmd = f"""
+            wget -qq https://huggingface.co/rhasspy/piper-voices/resolve/main/{code}/{m.lang}/{m.name}/{m.kind}/{m.model_name}
+            wget -qq https://huggingface.co/rhasspy/piper-voices/resolve/main/{code}/{m.lang}/{m.name}/{m.kind}/{m.model_name}.json
+            wget -qq https://huggingface.co/rhasspy/piper-voices/resolve/main/{code}/{m.lang}/{m.name}/{m.kind}/MODEL_CARD
+            """
+        if m.url == "":
+            m.url = f"https://huggingface.co/rhasspy/piper-voices/tree/main/{code}/{m.lang}/{m.name}/{m.kind}"
+
+    return ans
+
+
 def get_en_models():
     en_gb = [
         PiperModel(name="alan", kind="low", sr=16000, ns=1),
@@ -1267,6 +1631,69 @@ def get_en_models():
         ]
     )
 
+    en_gb += [
+        PiperModel(
+            name="miro",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_en-GB_miro/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_en-GB_miro" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_en-GB_miro/resolve/main/miro_en-GB.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_en-GB_miro/resolve/main/miro_en-GB.onnx.json
+
+                   mv miro_en-GB.onnx en_GB-miro-high.onnx
+                   mv miro_en-GB.onnx.json en_GB-miro-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_en-GB_miro",
+        ),
+        PiperModel(
+            name="dii",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_en-GB_dii/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_en-GB_dii" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_en-GB_dii/resolve/main/dii_en-GB.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_en-GB_dii/resolve/main/dii_en-GB.onnx.json
+
+                   mv dii_en-GB.onnx en_GB-dii-high.onnx
+                   mv dii_en-GB.onnx.json en_GB-dii-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_en-GB_dii",
+        ),
+    ]
+
     en_us.extend(
         [
             # https://github.com/rhasspy/piper/issues/187#issuecomment-1805709037
@@ -1286,6 +1713,39 @@ def get_en_models():
             ),
         ]
     )
+
+    en_us += [
+        PiperModel(
+            name="miro",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_en-US_miro/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_en-US_miro" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_en-US_miro/resolve/main/miro_en-US.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_en-US_miro/resolve/main/miro_en-US.onnx.json
+
+                   mv miro_en-US.onnx en_US-miro-high.onnx
+                   mv miro_en-US.onnx.json en_US-miro-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_en-US_miro",
+        ),
+    ]
 
     for m in en_gb:
         m.lang = "en_GB"
@@ -1411,6 +1871,70 @@ def get_de_models():
             url="https://huggingface.co/systemofapwne/piper-de-glados",
         ),
     ]
+
+    de_de += [
+        PiperModel(
+            name="miro",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_de-DE_miro/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_de-DE_miro" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_de-DE_miro/resolve/main/miro_de-DE.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_de-DE_miro/resolve/main/miro_de-DE.onnx.json
+
+                   mv miro_de-DE.onnx de_DE-miro-high.onnx
+                   mv miro_de-DE.onnx.json de_DE-miro-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_de-DE_miro",
+        ),
+        PiperModel(
+            name="dii",
+            kind="high",
+            sr=22050,
+            ns=1,
+            cmd="""
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_de-DE_dii/resolve/main/README.md
+
+                   echo "\n\nSee https://huggingface.co/OpenVoiceOS/pipertts_de-DE_dii" >> README.md
+                   echo "and https://github.com/OHF-Voice/piper1-gpl/discussions/27" >> README.md
+                   echo "\n\n# License\n\n" >> README.md
+
+                   echo "See also https://github.com/k2-fsa/sherpa-onnx/pull/2480\n\n" >> README.md
+                   echo "This model is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).\n" >> README.md
+
+                   echo "- ✅ Always free for regular (non-commercial) users  \n" >> README.md
+                   echo "- ❌ Commercial use is not allowed at this time  \n" >> README.md
+                   echo "- 🔄 The author may relax the restrictions in the future (e.g., allow commercial use), but will not make them stricter  \n\n" >> README.md
+                   echo "**Important:** You must include this license when redistributing the model or any derivatives.\n" >> README.md
+
+
+
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_de-DE_dii/resolve/main/dii_de-DE.onnx
+                   wget -qq https://huggingface.co/OpenVoiceOS/pipertts_de-DE_dii/resolve/main/dii_de-DE.onnx.json
+
+                   mv dii_de-DE.onnx de_DE-dii-high.onnx
+                   mv dii_de-DE.onnx.json de_DE-dii-high.onnx.json
+                   """,
+            url="https://huggingface.co/OpenVoiceOS/pipertts_de-DE_dii",
+        ),
+    ]
+
     for m in de_de:
         m.lang = "de_DE"
         if m.model_name == "":
@@ -1449,6 +1973,7 @@ def get_all_models():
     ans += get_fi_models()
     ans += get_fr_models()
     ans += get_hi_models()
+    ans += get_id_models()
     ans += get_hu_models()
     ans += get_is_models()
     ans += get_it_models()

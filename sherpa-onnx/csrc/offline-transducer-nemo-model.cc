@@ -5,6 +5,7 @@
 #include "sherpa-onnx/csrc/offline-transducer-nemo-model.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -35,18 +36,21 @@ class OfflineTransducerNeMoModel::Impl {
         sess_opts_(GetSessionOptions(config)),
         allocator_{} {
     {
-      auto buf = ReadFile(config.transducer.encoder_filename);
-      InitEncoder(buf.data(), buf.size());
+      // auto buf = ReadFile(config.transducer.encoder_filename);
+      // InitEncoder(buf.data(), buf.size());
+      InitEncoder(config.transducer.encoder_filename);
     }
 
     {
-      auto buf = ReadFile(config.transducer.decoder_filename);
-      InitDecoder(buf.data(), buf.size());
+      // auto buf = ReadFile(config.transducer.decoder_filename);
+      // InitDecoder(buf.data(), buf.size());
+      InitDecoder(config.transducer.decoder_filename);
     }
 
     {
-      auto buf = ReadFile(config.transducer.joiner_filename);
-      InitJoiner(buf.data(), buf.size());
+      // auto buf = ReadFile(config.transducer.joiner_filename);
+      // InitJoiner(buf.data(), buf.size());
+      InitJoiner(config.transducer.joiner_filename);
     }
   }
 
@@ -231,6 +235,97 @@ class OfflineTransducerNeMoModel::Impl {
   void InitJoiner(void *model_data, size_t model_data_length) {
     joiner_sess_ = std::make_unique<Ort::Session>(
         env_, model_data, model_data_length, sess_opts_);
+
+    GetInputNames(joiner_sess_.get(), &joiner_input_names_,
+                  &joiner_input_names_ptr_);
+
+    GetOutputNames(joiner_sess_.get(), &joiner_output_names_,
+                   &joiner_output_names_ptr_);
+
+    auto shape = joiner_sess_->GetOutputTypeInfo(0)
+                     .GetTensorTypeAndShapeInfo()
+                     .GetShape();
+    int32_t output_size = shape.back();
+    if (is_tdt_) {
+      if (vocab_size_ == output_size) {
+        SHERPA_ONNX_LOGE("It is not a TDT model!");
+        SHERPA_ONNX_EXIT(-1);
+      }
+
+      if (config_.debug) {
+        SHERPA_ONNX_LOGE("TDT model. vocab_size: %d, num_durations: %d",
+                         vocab_size_, output_size - vocab_size_);
+      }
+    } else if (vocab_size_ != output_size) {
+      SHERPA_ONNX_LOGE("vocab_size: %d != output_size: %d", vocab_size_,
+                       output_size);
+      SHERPA_ONNX_EXIT(-1);
+    }
+  }
+
+  void InitEncoder(const std::string &model_filename) {
+    encoder_sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model_filename).c_str(), sess_opts_);
+
+    GetInputNames(encoder_sess_.get(), &encoder_input_names_,
+                  &encoder_input_names_ptr_);
+
+    GetOutputNames(encoder_sess_.get(), &encoder_output_names_,
+                   &encoder_output_names_ptr_);
+
+    // get meta data
+    Ort::ModelMetadata meta_data = encoder_sess_->GetModelMetadata();
+    if (config_.debug) {
+      std::ostringstream os;
+      os << "---encoder---\n";
+      PrintModelMetadata(os, meta_data);
+#if __OHOS__
+      SHERPA_ONNX_LOGE("%{public}s\n", os.str().c_str());
+#else
+      SHERPA_ONNX_LOGE("%s\n", os.str().c_str());
+#endif
+    }
+
+    Ort::AllocatorWithDefaultOptions allocator;  // used in the macro below
+    SHERPA_ONNX_READ_META_DATA(vocab_size_, "vocab_size");
+
+    // need to increase by 1 since the blank token is not included in computing
+    // vocab_size in NeMo.
+    vocab_size_ += 1;
+
+    SHERPA_ONNX_READ_META_DATA(subsampling_factor_, "subsampling_factor");
+    SHERPA_ONNX_READ_META_DATA_STR_ALLOW_EMPTY(normalize_type_,
+                                               "normalize_type");
+    SHERPA_ONNX_READ_META_DATA(pred_rnn_layers_, "pred_rnn_layers");
+    SHERPA_ONNX_READ_META_DATA(pred_hidden_, "pred_hidden");
+    SHERPA_ONNX_READ_META_DATA_WITH_DEFAULT(is_giga_am_, "is_giga_am", 0);
+    SHERPA_ONNX_READ_META_DATA_WITH_DEFAULT(feat_dim_, "feat_dim", -1);
+
+    if (normalize_type_ == "NA") {
+      normalize_type_ = "";
+    }
+
+    std::string url;
+    SHERPA_ONNX_READ_META_DATA_STR_ALLOW_EMPTY(url, "url");
+    if (url.find("tdt") != std::string::npos) {
+      is_tdt_ = 1;
+    }
+  }
+
+  void InitDecoder(const std::string &model_filename) {
+    decoder_sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model_filename).c_str(), sess_opts_);
+
+    GetInputNames(decoder_sess_.get(), &decoder_input_names_,
+                  &decoder_input_names_ptr_);
+
+    GetOutputNames(decoder_sess_.get(), &decoder_output_names_,
+                   &decoder_output_names_ptr_);
+  }
+
+  void InitJoiner(const std::string &model_filename) {
+    joiner_sess_ = std::make_unique<Ort::Session>(
+        env_, std::filesystem::path(model_filename).c_str(), sess_opts_);
 
     GetInputNames(joiner_sess_.get(), &joiner_input_names_,
                   &joiner_input_names_ptr_);

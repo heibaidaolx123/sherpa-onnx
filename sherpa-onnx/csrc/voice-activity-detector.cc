@@ -31,8 +31,14 @@ class VoiceActivityDetector::Impl {
         buffer_(buffer_size_in_seconds * config.sample_rate) {
     Init();
     if (config_.post_padding > model_->MinSilenceDurationSamples()) {
-      throw std::invalid_argument(
-          "post_padding must be less than or equal to min_silence_duration");
+      SHERPA_ONNX_LOGE(
+          "post_padding (%f s) should be no larger "
+          "than min_silence_duration (%f s). Setting post_padding to "
+          "min_silence_duration.",
+          config_.post_padding / static_cast<float>(config_.sample_rate),
+          model_->MinSilenceDurationSamples() /
+              static_cast<float>(config_.sample_rate));
+      config_.post_padding = model_->MinSilenceDurationSamples();
     }
   }
 
